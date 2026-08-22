@@ -14,16 +14,19 @@ import streamlit as st
 def is_cloud_mode():
     """Check if Supabase credentials are configured."""
     try:
-        return 'supabase' in st.secrets and 'url' in st.secrets['supabase']
+        return 'supabase' in st.secrets and 'host' in st.secrets['supabase']
     except:
         return False
 
 
 def get_supabase_connection():
     """Get PostgreSQL connection string for Supabase."""
+    from urllib.parse import quote_plus
     secrets = st.secrets['supabase']
+    # URL-encode password to handle special characters
+    password = quote_plus(secrets['password'])
     # Supabase connection string format
-    return f"postgresql://{secrets['user']}:{secrets['password']}@{secrets['host']}:{secrets['port']}/{secrets['database']}"
+    return f"postgresql://{secrets['user']}:{password}@{secrets['host']}:{secrets['port']}/{secrets['database']}"
 
 
 def get_connection():
