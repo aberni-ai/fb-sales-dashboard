@@ -116,20 +116,19 @@ st.markdown("""
         border: none !important;
     }
 
-    /* Card styling - cleaner with more contrast */
+    /* Card styling - minimal, no border */
     .card {
-        background: rgba(17, 24, 39, 0.6);
-        border: 1px solid #374151;
-        border-radius: 12px;
-        padding: 24px;
-        margin-bottom: 16px;
+        padding: 0;
+        margin-bottom: 24px;
     }
 
     .card-title {
-        color: #ffffff;
-        font-size: 18px;
-        font-weight: 600;
-        margin-bottom: 20px;
+        color: #9ca3af;
+        font-size: 14px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 12px;
     }
 
     /* KPI Card - single accent color, clean style */
