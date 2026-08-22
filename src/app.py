@@ -1062,11 +1062,42 @@ def render_remaining_season_forecast(df):
     season_end_month = 11
     season_end_day = 30
 
+    # Get filter options
+    categories = sorted([c for c in df['category'].unique() if c is not None and pd.notna(c)])
+    subcategories = sorted([s for s in df['subcategory'].unique() if s is not None and pd.notna(s)])
+    items = sorted([i for i in df['plu_name'].unique() if i is not None and pd.notna(i)])
+
+    # Filter controls
+    col1, col2, col3 = st.columns([1.2, 2.5, 1.5])
+
+    with col1:
+        filter_by = st.selectbox("Filter By", ["All Items", "Category", "Subcategory", "Specific Items"], key="rsf_filter_by")
+
+    with col2:
+        if filter_by == "Category":
+            selected_filter = st.multiselect("Select Categories", categories, default=[], key="rsf_cats")
+            filter_col = 'category'
+        elif filter_by == "Subcategory":
+            selected_filter = st.multiselect("Select Subcategories", subcategories, default=[], key="rsf_subcats")
+            filter_col = 'subcategory'
+        elif filter_by == "Specific Items":
+            selected_filter = st.multiselect("Select Items", items, default=[], key="rsf_items", placeholder="Search items...")
+            filter_col = 'plu_name'
+        else:
+            selected_filter = []
+            filter_col = None
+
+    st.markdown("<div style='height: 12px'></div>", unsafe_allow_html=True)
+
     # Calculate last year's data from today's date through end of season
     # Use same month/day as today through Nov 30
 
     # Get last year's remaining season data
     last_year_df = df[df['year'] == last_year].copy()
+
+    # Apply item filter if selected
+    if filter_col and selected_filter:
+        last_year_df = last_year_df[last_year_df[filter_col].isin(selected_filter)]
 
     # Filter to "today through end of season" using month/day logic
     last_year_remaining = last_year_df[
@@ -1084,6 +1115,11 @@ def render_remaining_season_forecast(df):
 
     # Also get this year's data so far for context
     this_year_df = df[df['year'] == current_year].copy()
+
+    # Apply same filter to this year
+    if filter_col and selected_filter:
+        this_year_df = this_year_df[this_year_df[filter_col].isin(selected_filter)]
+
     this_year_ytd = this_year_df[
         (this_year_df['month'] < today.month) |
         ((this_year_df['month'] == today.month) & (this_year_df['day_of_month'] < today.day))
@@ -1181,6 +1217,18 @@ def render_remaining_season_forecast(df):
     # Rename for clarity
     cat_data = cat_data.rename(columns={'Projected Sales': f'{last_year} Remaining Sales'})
 
+    # Export buttons for category data
+    cat_export = cat_data[['Category', f'{current_year} YTD', f'{last_year} Remaining Sales', f'{current_year} Projected Total']].copy()
+    col_space, col_csv, col_excel = st.columns([4, 1, 1])
+    with col_csv:
+        csv_data = cat_export.to_csv(index=False)
+        st.download_button("📄 CSV", csv_data, "remaining_season_categories.csv", "text/csv", use_container_width=True, key="rsf_cat_csv")
+    with col_excel:
+        excel_buffer = io.BytesIO()
+        cat_export.to_excel(excel_buffer, index=False, engine='openpyxl')
+        excel_buffer.seek(0)
+        st.download_button("📊 Excel", excel_buffer, "remaining_season_categories.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key="rsf_cat_excel")
+
     col_config = {
         f'{last_year} Remaining Sales': st.column_config.NumberColumn(f'{last_year} Remaining', format="$%,.0f"),
         'Projected Qty': st.column_config.NumberColumn('Projected Qty', format="%,.0f"),
@@ -1188,19 +1236,30 @@ def render_remaining_season_forecast(df):
         f'{current_year} Projected Total': st.column_config.NumberColumn(f'{current_year} Projected', format="$%,.0f"),
     }
 
-    st.dataframe(cat_data[['Category', f'{current_year} YTD', f'{last_year} Remaining Sales', f'{current_year} Projected Total']], column_config=col_config, use_container_width=True, hide_index=True, height=300)
+    st.dataframe(cat_export, column_config=col_config, use_container_width=True, hide_index=True, height=300)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Top items for remaining season
+    # Items for remaining season (all items, not just top 25)
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    render_card_header(f"Top Items - Remaining Season Projection (Based on {last_year})")
+    render_card_header(f"Items - Remaining Season Projection (Based on {last_year})")
 
-    item_data = last_year_remaining.groupby('plu_name').agg({
+    item_data = last_year_remaining.groupby(['plu_name', 'category', 'subcategory']).agg({
         'total_price': 'sum',
         'total_qty': 'sum'
     }).reset_index()
-    item_data.columns = ['Item', 'Projected Sales', 'Projected Qty']
-    item_data = item_data.sort_values('Projected Sales', ascending=False).head(25)
+    item_data.columns = ['Item', 'Category', 'Subcategory', 'Projected Sales', 'Projected Qty']
+    item_data = item_data.sort_values('Projected Sales', ascending=False)
+
+    # Export buttons for item data
+    col_space, col_csv, col_excel = st.columns([4, 1, 1])
+    with col_csv:
+        csv_data = item_data.to_csv(index=False)
+        st.download_button("📄 CSV", csv_data, "remaining_season_items.csv", "text/csv", use_container_width=True, key="rsf_item_csv")
+    with col_excel:
+        excel_buffer = io.BytesIO()
+        item_data.to_excel(excel_buffer, index=False, engine='openpyxl')
+        excel_buffer.seek(0)
+        st.download_button("📊 Excel", excel_buffer, "remaining_season_items.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key="rsf_item_excel")
 
     col_config = {
         'Projected Sales': st.column_config.NumberColumn('Projected Sales', format="$%,.0f"),
