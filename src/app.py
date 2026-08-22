@@ -295,10 +295,31 @@ st.markdown("""
         font-size: 15px;
     }
 
-    /* Radio */
+    /* Radio - styled as toggle */
+    .stRadio > div {
+        background-color: #1f2937;
+        border-radius: 8px;
+        padding: 4px;
+        display: inline-flex;
+        gap: 4px;
+    }
     .stRadio label {
-        color: #e5e7eb !important;
-        font-size: 15px;
+        color: #9ca3af !important;
+        font-size: 14px;
+        padding: 8px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .stRadio label:has(input:checked) {
+        background-color: #2563eb;
+        color: #ffffff !important;
+    }
+    .stRadio label span {
+        color: inherit !important;
+    }
+    .stRadio input {
+        display: none;
     }
 
     /* Slider */
@@ -2335,9 +2356,15 @@ def main():
         render_comparison(df)
 
     with tab4:
-        # Mode selector for Forecast tab
-        forecast_mode = st.selectbox("Forecast Mode", ["Order Planning", "Remaining Season Projection"], key="forecast_mode_select", label_visibility="collapsed")
-        st.markdown("<div style='height: 8px'></div>", unsafe_allow_html=True)
+        # Toggle between forecast modes
+        forecast_mode = st.radio(
+            "Forecast Mode",
+            ["Order Planning", "Remaining Season"],
+            horizontal=True,
+            key="forecast_mode_toggle",
+            label_visibility="collapsed"
+        )
+        st.markdown("<div style='height: 12px'></div>", unsafe_allow_html=True)
         if forecast_mode == "Order Planning":
             render_forecast(df)
         else:
