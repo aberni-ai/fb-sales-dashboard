@@ -1892,15 +1892,51 @@ def render_locations():
     valid_dates = daily_totals[daily_totals > 10000].index
     loc_df = loc_df[loc_df['date'].dt.date.isin(valid_dates)]
 
-    # Year filter
+    # Get current date info for YTD
+    today = datetime.now()
+    current_month = today.month
+    current_day = today.day
+
+    # Filter options
     years = sorted([y for y in loc_df['year'].unique() if y is not None and pd.notna(y)])
 
-    col1, col2, col3 = st.columns([1, 1, 3])
+    col1, col2, col3, col4 = st.columns([1.2, 1, 1, 1.5])
+
     with col1:
+        date_range = st.selectbox("Date Range", ['Year to Date', 'Full Season (May-Nov)', 'Full Year', 'Custom Range'], key="loc_daterange")
+
+    with col2:
         selected_year = st.selectbox("Year", ['All Years'] + [str(y) for y in years], key="loc_year")
 
+    # Custom date range inputs
+    if date_range == 'Custom Range':
+        with col3:
+            start_date = st.date_input("Start", value=loc_df['date'].min().date(), key="loc_start")
+        with col4:
+            end_date = st.date_input("End", value=loc_df['date'].max().date(), key="loc_end")
+
+    # Apply filters
+    filtered_df = loc_df.copy()
+
+    # Year filter
     if selected_year != 'All Years':
-        loc_df = loc_df[loc_df['year'] == int(selected_year)]
+        filtered_df = filtered_df[filtered_df['year'] == int(selected_year)]
+
+    # Date range filter
+    if date_range == 'Year to Date':
+        filtered_df = filtered_df[
+            (filtered_df['month'] < current_month) |
+            ((filtered_df['month'] == current_month) & (filtered_df['date'].dt.day <= current_day))
+        ]
+    elif date_range == 'Full Season (May-Nov)':
+        filtered_df = filtered_df[filtered_df['month'].isin([5, 6, 7, 8, 9, 10, 11])]
+    elif date_range == 'Custom Range':
+        filtered_df = filtered_df[
+            (filtered_df['date'].dt.date >= start_date) &
+            (filtered_df['date'].dt.date <= end_date)
+        ]
+
+    loc_df = filtered_df
 
     # KPIs
     total_sales = loc_df['gross_sales'].sum()
