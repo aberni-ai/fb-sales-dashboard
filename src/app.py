@@ -370,7 +370,23 @@ st.markdown("""
         font-size: 28px;
         font-weight: 700;
     }
+
+    /* Confidential watermark footer */
+    .watermark {
+        position: fixed;
+        bottom: 8px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        color: #ef4444;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.05em;
+        pointer-events: none;
+        z-index: 9999;
+    }
 </style>
+<div class="watermark">Canobie Lake Park Confidential</div>
 """, unsafe_allow_html=True)
 
 # =============================================================================
