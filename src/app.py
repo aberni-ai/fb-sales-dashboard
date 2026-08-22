@@ -2249,21 +2249,40 @@ def render_locations():
 
     loc_df = filtered_df
 
-    # KPIs
-    total_sales = loc_df['gross_sales'].sum()
-    operating_days = loc_df['date'].dt.date.nunique()
-    num_locations = loc_df['location'].nunique()
-    daily_avg = total_sales / operating_days if operating_days > 0 else 0
+    # KPIs - show year comparison if both years selected
+    if ytd_comparison_mode and len(selected_years) == 2:
+        year1, year2 = sorted([int(y) for y in selected_years])
+        sales_y1 = loc_df[loc_df['year'] == year1]['gross_sales'].sum()
+        sales_y2 = loc_df[loc_df['year'] == year2]['gross_sales'].sum()
+        change_dollars = sales_y2 - sales_y1
+        change_pct = ((sales_y2 - sales_y1) / sales_y1 * 100) if sales_y1 > 0 else 0
+        change_sign = "+" if change_dollars >= 0 else ""
 
-    cols = st.columns(4)
-    with cols[0]:
-        render_kpi_card("Total Sales", f"${total_sales:,.0f}")
-    with cols[1]:
-        render_kpi_card("Daily Average", f"${daily_avg:,.0f}")
-    with cols[2]:
-        render_kpi_card("Operating Days", f"{operating_days}")
-    with cols[3]:
-        render_kpi_card("Locations", f"{num_locations}")
+        cols = st.columns(4)
+        with cols[0]:
+            render_kpi_card(f"{year1} Sales", f"${sales_y1:,.0f}")
+        with cols[1]:
+            render_kpi_card(f"{year2} Sales", f"${sales_y2:,.0f}")
+        with cols[2]:
+            render_kpi_card("$ Change", f"{change_sign}${change_dollars:,.0f}")
+        with cols[3]:
+            render_kpi_card("% Change", f"{change_sign}{change_pct:.1f}%")
+    else:
+        # Standard single-period KPIs
+        total_sales = loc_df['gross_sales'].sum()
+        operating_days = loc_df['date'].dt.date.nunique()
+        num_locations = loc_df['location'].nunique()
+        daily_avg = total_sales / operating_days if operating_days > 0 else 0
+
+        cols = st.columns(4)
+        with cols[0]:
+            render_kpi_card("Total Sales", f"${total_sales:,.0f}")
+        with cols[1]:
+            render_kpi_card("Daily Average", f"${daily_avg:,.0f}")
+        with cols[2]:
+            render_kpi_card("Operating Days", f"{operating_days}")
+        with cols[3]:
+            render_kpi_card("Locations", f"{num_locations}")
 
     render_section_divider()
 
