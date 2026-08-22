@@ -1955,13 +1955,23 @@ def render_locations():
     location_summary['Daily Avg'] = location_summary['Total Sales'] / location_summary['Days']
     location_summary = location_summary.sort_values('Total Sales', ascending=False)
 
-    # Format for display
-    col_config = {
-        'Total Sales': st.column_config.NumberColumn('Total Sales', format="$%.0f"),
-        'Daily Avg': st.column_config.NumberColumn('Daily Avg', format="$%.0f"),
-    }
+    # Export buttons
+    col_space, col_csv, col_excel = st.columns([4, 1, 1])
+    with col_csv:
+        csv_data = location_summary.to_csv(index=False)
+        st.download_button("📄 CSV", csv_data, "location_sales.csv", "text/csv", use_container_width=True)
+    with col_excel:
+        excel_buffer = io.BytesIO()
+        location_summary.to_excel(excel_buffer, index=False, engine='openpyxl')
+        excel_buffer.seek(0)
+        st.download_button("📊 Excel", excel_buffer, "location_sales.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
-    st.dataframe(location_summary, column_config=col_config, use_container_width=True, hide_index=True, height=400)
+    # Format for display with commas
+    display_df = location_summary.copy()
+    display_df['Total Sales'] = display_df['Total Sales'].apply(lambda x: f"${x:,.0f}")
+    display_df['Daily Avg'] = display_df['Daily Avg'].apply(lambda x: f"${x:,.0f}")
+
+    st.dataframe(display_df, use_container_width=True, hide_index=True, height=400)
     st.markdown('</div>', unsafe_allow_html=True)
 
     # Upload section at bottom
