@@ -1762,39 +1762,57 @@ def process_location_file(file_bytes, filename):
     """
     Process a location sales Excel file.
     Extracts location (Agency Name) and gross_sales (Sales Gross) columns.
+    File format: Date in row 2, Header row at row 7 (0-indexed), data starts at row 8.
     Returns (date, dataframe) or (None, None, error).
     """
     import pytz
     ET = pytz.timezone('America/New_York')
 
     try:
-        # Read the Excel file
-        df = pd.read_excel(io.BytesIO(file_bytes))
+        # First, try to get date from the file itself (row 2 has date info)
+        df_raw = pd.read_excel(io.BytesIO(file_bytes), header=None, nrows=5)
 
-        # Find the Agency Name and Sales Gross columns
+        operating_date = None
+
+        # Try to parse date from row 2 (FromDate Friday, August 15, 2025)
+        try:
+            date_cell = str(df_raw.iloc[2, 0])
+            date_pattern = r'([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})'
+            match = re.search(date_pattern, date_cell)
+            if match:
+                month_str, day_str, year_str = match.groups()
+                date_str = f"{month_str} {day_str}, {year_str}"
+                dt = datetime.strptime(date_str, "%B %d, %Y")
+                operating_date = ET.localize(dt.replace(hour=12))
+        except:
+            pass
+
+        # Fallback to filename date
+        if operating_date is None:
+            date_match = re.search(r'(\d{4}-\d{2}-\d{2})', filename)
+            if date_match:
+                date_str = date_match.group(1)
+                operating_date = ET.localize(datetime.strptime(date_str, "%Y-%m-%d").replace(hour=12))
+            else:
+                return None, None, "Could not parse date from file or filename"
+
+        # Read the actual data - header is at row 7
+        df = pd.read_excel(io.BytesIO(file_bytes), header=7)
         df.columns = [str(c).strip() for c in df.columns]
 
-        # Look for the columns
+        # Find the Agency Name and Sales Gross columns
         location_col = None
         sales_col = None
 
         for col in df.columns:
-            col_lower = col.lower()
-            if 'agency' in col_lower or 'location' in col_lower:
+            col_lower = col.lower().strip()
+            if 'agency name' in col_lower or col_lower == 'agency name':
                 location_col = col
-            if 'sales gross' in col_lower or 'salesgross' in col_lower or col_lower == 'sales gross':
+            if 'sales gross' in col_lower or col_lower == 'sales gross':
                 sales_col = col
 
         if not location_col or not sales_col:
             return None, None, f"Could not find required columns. Found: {list(df.columns)}"
-
-        # Extract date from filename (Location_Sales_YYYY-MM-DD.xlsx)
-        date_match = re.search(r'(\d{4}-\d{2}-\d{2})', filename)
-        if date_match:
-            date_str = date_match.group(1)
-            operating_date = ET.localize(datetime.strptime(date_str, "%Y-%m-%d").replace(hour=12))
-        else:
-            return None, None, "Could not parse date from filename"
 
         # Keep only the columns we need
         result_df = df[[location_col, sales_col]].copy()
@@ -1803,8 +1821,9 @@ def process_location_file(file_bytes, filename):
         # Convert sales to positive numbers (they come as negatives)
         result_df['gross_sales'] = pd.to_numeric(result_df['gross_sales'], errors='coerce').fillna(0).abs()
 
-        # Remove empty rows
+        # Remove empty rows and total rows
         result_df = result_df[result_df['location'].notna() & (result_df['location'] != '')]
+        result_df = result_df[~result_df['location'].astype(str).str.lower().str.contains('total', na=False)]
 
         # Add date and features
         result_df['date'] = operating_date
