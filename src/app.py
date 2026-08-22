@@ -1937,6 +1937,26 @@ def render_upload():
 
     st.markdown('</div>', unsafe_allow_html=True)
 
+    # Location Sales Upload Section
+    st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    render_card_header("Upload Location Sales Files")
+
+    st.markdown("""
+        <p style='color: #9ca3af; font-size: 15px; margin-bottom: 16px;'>
+            Upload location sales Excel files (from the Daily F&B Sales by Location email).<br>
+            <span style='color: #6b7280; font-size: 13px;'>• Date is automatically extracted from within the file</span>
+        </p>
+    """, unsafe_allow_html=True)
+
+    location_files = st.file_uploader("Drop location files here", type=['xlsx'], accept_multiple_files=True, key="loc_upload_main", label_visibility="collapsed")
+
+    if location_files:
+        if st.button(f"Process {len(location_files)} location file(s)", type="primary", use_container_width=True):
+            process_location_uploads(location_files)
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
     # Info about data sharing status
     st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
     st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -2248,19 +2268,6 @@ def render_locations():
     st.dataframe(location_summary, column_config=col_config, use_container_width=True, hide_index=True, height=400)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Upload section at bottom
-    st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    render_card_header("Upload Location Sales Files")
-
-    uploaded_files = st.file_uploader("Drop location files here", type=['xlsx'], accept_multiple_files=True, key="loc_upload2", label_visibility="collapsed")
-
-    if uploaded_files:
-        if st.button(f"Process {len(uploaded_files)} location file(s)", type="primary", use_container_width=True, key="loc_process"):
-            process_location_uploads(uploaded_files)
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
 
 def process_location_uploads(uploaded_files):
     """Process uploaded location files."""
@@ -2344,7 +2351,7 @@ def main():
         render_upload()
         return
 
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Sales", "Items", "Comparison", "Forecast", "Locations", "Upload Data"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Summary", "Items", "Comparison", "Forecast", "Locations", "Upload Data"])
 
     with tab1:
         render_sales_overview(df)
