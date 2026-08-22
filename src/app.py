@@ -1572,8 +1572,8 @@ def render_items(df):
 
     with col2:
         if date_range == 'Year to Date':
-            # For YTD, allow selecting years to compare
-            ytd_years = st.multiselect("Years", [str(y) for y in years], default=[str(max(years))], key="items_ytd_years")
+            # For YTD, allow selecting years to compare - default to all years
+            ytd_years = st.multiselect("Years", [str(y) for y in years], default=[str(y) for y in years], key="items_ytd_years")
             selected_year = 'All Years'  # Not used in YTD mode
         else:
             selected_year = st.selectbox("Year", ['All Years'] + [str(y) for y in years], key="items_year")
@@ -1657,6 +1657,12 @@ def render_items(df):
         item_data['_total_sales'] = item_data[sales_cols].sum(axis=1)
         item_data = item_data.sort_values('_total_sales', ascending=False)
 
+        # Calculate Change and Change % if we have exactly 2 years
+        if len(sales_cols) == 2:
+            col1, col2 = sorted(sales_cols)  # e.g., 'Sales 2025', 'Sales 2026'
+            item_data['Change'] = item_data[col2] - item_data[col1]
+            item_data['Change %'] = ((item_data[col2] - item_data[col1]) / item_data[col1].replace(0, float('nan')) * 100).fillna(0)
+
         # Calculate totals
         total_items = len(item_data)
         total_sales = item_data['_total_sales'].sum()
@@ -1739,8 +1745,13 @@ def render_items(df):
 
     # Prepare display data - keep numeric for proper sorting
     if date_range == 'Year to Date' and len(ytd_years) > 1:
-        # For YTD comparison, show the pivot table
-        display_cols = ['Item', 'Category', 'Subcategory'] + [c for c in item_data.columns if c.startswith('Qty') or c.startswith('Sales')]
+        # For YTD comparison, show the pivot table with Change columns if 2 years
+        base_cols = ['Item', 'Category', 'Subcategory'] + [c for c in item_data.columns if c.startswith('Qty') or c.startswith('Sales')]
+        # Add Change columns if they exist
+        if 'Change' in item_data.columns:
+            display_cols = base_cols + ['Change', 'Change %']
+        else:
+            display_cols = base_cols
         display_data = item_data[display_cols].copy()
 
         # Build column config for YTD comparison (with commas)
@@ -1750,6 +1761,10 @@ def render_items(df):
                 col_config[col] = st.column_config.NumberColumn(col, format="$%,.0f")
             elif col.startswith('Qty'):
                 col_config[col] = st.column_config.NumberColumn(col, format="%,.0f")
+            elif col == 'Change':
+                col_config[col] = st.column_config.NumberColumn('Change', format="$%,.0f")
+            elif col == 'Change %':
+                col_config[col] = st.column_config.NumberColumn('Change %', format="%.1f%%")
     else:
         # Standard display
         display_data = item_data[['Item', 'Category', 'Subcategory', 'Qty Sold', 'Sales', 'Avg Price']].copy()
@@ -2217,8 +2232,8 @@ def render_locations():
 
     with col2:
         if date_range == 'Year to Date':
-            # Multi-select for YTD comparison
-            selected_years = st.multiselect("Compare Years", [str(y) for y in years], default=[str(max(years))], key="loc_years_multi")
+            # Multi-select for YTD comparison - default to all years
+            selected_years = st.multiselect("Compare Years", [str(y) for y in years], default=[str(y) for y in years], key="loc_years_multi")
         else:
             selected_year = st.selectbox("Year", ['All Years'] + [str(y) for y in years], key="loc_year")
             selected_years = []
