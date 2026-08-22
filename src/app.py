@@ -1815,6 +1815,48 @@ def merge_into_database(new_df):
         save_dataframe(new_df, 'sales_featured', if_exists='append')
 
 
+def render_upload_compact():
+    """Compact upload interface for popover."""
+
+    st.markdown("**Item Sales**")
+    st.caption("Daily sales Excel files")
+    item_files = st.file_uploader("Items", type=['xlsx'], accept_multiple_files=True, key="popup_items", label_visibility="collapsed")
+
+    if item_files:
+        if st.button(f"Process {len(item_files)} item file(s)", type="primary", use_container_width=True, key="popup_items_btn"):
+            progress = st.progress(0, text="Processing...")
+            processed = 0
+            all_data = []
+            dates_processed = []
+
+            for i, f in enumerate(item_files):
+                progress.progress((i + 1) / len(item_files))
+                file_bytes = f.read()
+                operating_date, df, error = process_uploaded_file(file_bytes, f.name)
+                if operating_date is not None and df is not None and len(df) > 0:
+                    df = add_features_to_df(df)
+                    all_data.append(df)
+                    dates_processed.append(operating_date.strftime('%Y-%m-%d'))
+                    processed += 1
+
+            if all_data:
+                combined_df = pd.concat(all_data, ignore_index=True)
+                merge_into_database(combined_df)
+                progress.empty()
+                st.success(f"Processed {processed} file(s)")
+                st.caption(f"Dates: {', '.join(sorted(dates_processed))}")
+                st.info("Refresh page to see updated data")
+
+    st.markdown("---")
+    st.markdown("**Location Sales**")
+    st.caption("Daily F&B Sales by Location files")
+    loc_files = st.file_uploader("Locations", type=['xlsx'], accept_multiple_files=True, key="popup_locs", label_visibility="collapsed")
+
+    if loc_files:
+        if st.button(f"Process {len(loc_files)} location file(s)", type="primary", use_container_width=True, key="popup_locs_btn"):
+            process_location_uploads(loc_files)
+
+
 def render_upload():
     """Render file upload tab with auto-processing."""
 
@@ -2329,28 +2371,33 @@ def main():
     except:
         pass
 
-    # Header
-    last_updated_html = f'<div style="color: #6b7280; font-size: 13px; margin-top: 4px;">Last Updated: {last_updated}</div>' if last_updated else ''
+    # Header with upload button in top right
+    header_col1, header_col2 = st.columns([4, 1])
 
-    st.markdown(f"""
-        <div class="dash-header">
-            <div>
-                <span class="dash-title">Canobie Lake Park</span>
-                <span class="badge">F&B Sales</span>
+    with header_col1:
+        last_updated_text = f" · Updated {last_updated}" if last_updated else ""
+        st.markdown(f"""
+            <div class="dash-header">
+                <div>
+                    <span class="dash-title">Canobie Lake Park</span>
+                    <span class="badge">F&B Sales</span>
+                </div>
+                <div class="dash-subtitle">Food & Beverage Sales Dashboard{last_updated_text}</div>
             </div>
-            <div class="dash-subtitle">Food & Beverage Sales Dashboard</div>
-            {last_updated_html}
-        </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
+
+    with header_col2:
+        st.markdown("<div style='height: 16px'></div>", unsafe_allow_html=True)
+        with st.popover("Upload Data", use_container_width=True):
+            render_upload_compact()
 
     df = load_sales_data()
 
     if df is None or len(df) == 0:
-        st.warning("No data found. Upload files to get started.")
-        render_upload()
+        st.warning("No data found. Use the Upload Data button above to get started.")
         return
 
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Summary", "Locations", "Items", "Comparison", "Forecast", "Upload Data"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Summary", "Locations", "Items", "Comparison", "Forecast"])
 
     with tab1:
         render_sales_overview(df)
@@ -2378,9 +2425,6 @@ def main():
             render_forecast(df)
         else:
             render_remaining_season_forecast(df)
-
-    with tab6:
-        render_upload()
 
 
 if __name__ == "__main__":
