@@ -1433,21 +1433,21 @@ def render_items(df):
         display_cols = ['Item', 'Category', 'Subcategory'] + [c for c in item_data.columns if c.startswith('Qty') or c.startswith('Sales')]
         display_data = item_data[display_cols].copy()
 
-        # Build column config for YTD comparison
+        # Build column config for YTD comparison (with commas)
         col_config = {}
         for col in display_data.columns:
             if col.startswith('Sales'):
-                col_config[col] = st.column_config.NumberColumn(col, format="$%.0f")
+                col_config[col] = st.column_config.NumberColumn(col, format="$%,.0f")
             elif col.startswith('Qty'):
-                col_config[col] = st.column_config.NumberColumn(col, format="%.0f")
+                col_config[col] = st.column_config.NumberColumn(col, format="%,.0f")
     else:
         # Standard display
         display_data = item_data[['Item', 'Category', 'Subcategory', 'Qty Sold', 'Sales', 'Avg Price']].copy()
 
-        # Column config for proper formatting AND sorting
+        # Column config for proper formatting AND sorting (with commas)
         col_config = {
-            'Qty Sold': st.column_config.NumberColumn('Qty Sold', format="%.0f"),
-            'Sales': st.column_config.NumberColumn('Sales', format="$%.0f"),
+            'Qty Sold': st.column_config.NumberColumn('Qty Sold', format="%,.0f"),
+            'Sales': st.column_config.NumberColumn('Sales', format="$%,.0f"),
             'Avg Price': st.column_config.NumberColumn('Avg Price', format="$%.2f"),
         }
 
