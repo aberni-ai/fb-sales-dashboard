@@ -2350,18 +2350,21 @@ def main():
         render_upload()
         return
 
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Summary", "Items", "Comparison", "Forecast", "Locations", "Upload Data"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Summary", "Locations", "Items", "Comparison", "Forecast", "Upload Data"])
 
     with tab1:
         render_sales_overview(df)
 
     with tab2:
-        render_items(df)
+        render_locations()
 
     with tab3:
-        render_comparison(df)
+        render_items(df)
 
     with tab4:
+        render_comparison(df)
+
+    with tab5:
         # Toggle between forecast modes
         forecast_mode = st.radio(
             "Forecast Mode",
@@ -2375,9 +2378,6 @@ def main():
             render_forecast(df)
         else:
             render_remaining_season_forecast(df)
-
-    with tab5:
-        render_locations()
 
     with tab6:
         render_upload()
