@@ -936,37 +936,79 @@ def render_comparison(df):
     # Trend over time (if comparing single item or few items)
     if len(selected_items) <= 3 and len(selected_years) >= 1:
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        render_card_header(f"Monthly Trend")
 
-        # Monthly aggregation
-        monthly_data = filtered_df.groupby([group_col, 'year', 'month'])[metric_col].sum().reset_index()
-        monthly_data['month_name'] = monthly_data['month'].apply(lambda x: ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][x] if 1 <= x <= 12 else '')
+        # Toggle between monthly and cumulative
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            render_card_header("Season Trend")
+        with col2:
+            trend_type = st.selectbox("View", ["Cumulative", "Monthly"], key="comp_trend_type", label_visibility="collapsed")
+
+        # Daily aggregation for smoother cumulative chart
+        daily_data = filtered_df.groupby([group_col, 'year', filtered_df['date'].dt.date])[metric_col].sum().reset_index()
+        daily_data.columns = [group_col, 'year', 'date', metric_col]
+        daily_data['date'] = pd.to_datetime(daily_data['date'])
+        daily_data['month'] = daily_data['date'].dt.month
+        daily_data['day_of_year'] = daily_data['date'].dt.dayofyear
+
+        # Filter to operating season (May-Nov)
+        daily_data = daily_data[daily_data['month'].isin([5, 6, 7, 8, 9, 10, 11])]
 
         fig = go.Figure()
 
+        colors = [COLORS['blue'], COLORS['green'], COLORS['purple'], COLORS['yellow'], COLORS['teal']]
+        color_idx = 0
+
         # Create a line for each item-year combination
         for item in selected_items:
-            item_data = monthly_data[monthly_data[group_col] == item]
+            item_data = daily_data[daily_data[group_col] == item]
             for year in sorted(item_data['year'].unique()):
-                year_data = item_data[item_data['year'] == year].sort_values('month')
-                # Only show operating season (May-Nov)
-                year_data = year_data[year_data['month'].isin([5, 6, 7, 8, 9, 10, 11])]
+                year_data = item_data[item_data['year'] == year].sort_values('date')
+
+                if len(year_data) == 0:
+                    continue
+
+                # Calculate cumulative sum if needed
+                if trend_type == "Cumulative":
+                    year_data = year_data.copy()
+                    year_data['value'] = year_data[metric_col].cumsum()
+                else:
+                    # Monthly aggregation
+                    year_data = year_data.groupby('month')[metric_col].sum().reset_index()
+                    year_data['value'] = year_data[metric_col]
+                    year_data['month_name'] = year_data['month'].apply(lambda x: ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][x])
 
                 label = f"{item[:20]}{'...' if len(item) > 20 else ''} ({int(year)})" if len(selected_items) > 1 else str(int(year))
 
-                fig.add_trace(go.Scatter(
-                    x=year_data['month_name'],
-                    y=year_data[metric_col],
-                    mode='lines+markers',
-                    name=label,
-                    line=dict(width=2),
-                    marker=dict(size=6)
-                ))
+                if trend_type == "Cumulative":
+                    fig.add_trace(go.Scatter(
+                        x=year_data['date'],
+                        y=year_data['value'],
+                        mode='lines',
+                        name=label,
+                        line=dict(width=2, color=colors[color_idx % len(colors)]),
+                        hovertemplate='%{x|%b %d}: $%{y:,.0f}<extra>' + label + '</extra>' if metric == "Sales ($)" else '%{x|%b %d}: %{y:,.0f}<extra>' + label + '</extra>'
+                    ))
+                else:
+                    fig.add_trace(go.Scatter(
+                        x=year_data['month_name'],
+                        y=year_data['value'],
+                        mode='lines+markers',
+                        name=label,
+                        line=dict(width=2, color=colors[color_idx % len(colors)]),
+                        marker=dict(size=6)
+                    ))
 
-        layout = get_chart_layout(300)
+                color_idx += 1
+
+        layout = get_chart_layout(350)
         layout['legend'] = dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1, font=dict(color='#e5e7eb', size=12))
         layout['margin'] = dict(l=10, r=10, t=40, b=30)
-        layout['hovermode'] = 'x unified'
+        layout['hovermode'] = 'x unified' if trend_type == "Monthly" else 'closest'
+
+        if trend_type == "Cumulative":
+            layout['xaxis']['tickformat'] = '%b %d'
+
         fig.update_layout(**layout)
 
         st.plotly_chart(fig, use_container_width=True)
