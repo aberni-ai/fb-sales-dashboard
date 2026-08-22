@@ -1026,16 +1026,32 @@ def render_comparison(df):
     st.markdown('<div class="card">', unsafe_allow_html=True)
     render_card_header("Detailed Comparison")
 
-    # Pivot table for display
-    pivot_display = pivot_data.copy()
-    for col in pivot_display.columns:
-        if metric == "Sales ($)":
-            pivot_display[col] = pivot_display[col].apply(lambda x: f"${x:,.0f}")
-        else:
-            pivot_display[col] = pivot_display[col].apply(lambda x: f"{int(x):,}")
+    # Pivot table for display - keep numeric for sorting
+    pivot_display = pivot_data.copy().reset_index()
 
-    pivot_display = pivot_display.reset_index()
-    st.dataframe(pivot_display, use_container_width=True, hide_index=True, height=250)
+    # Add Change and Change % if we have exactly 2 years
+    year_cols = [c for c in pivot_display.columns if c != compare_by]
+    if len(year_cols) == 2:
+        col1, col2 = sorted(year_cols)  # e.g., 2025, 2026
+        pivot_display['Change'] = pivot_display[col2] - pivot_display[col1]
+        pivot_display['Change %'] = ((pivot_display[col2] - pivot_display[col1]) / pivot_display[col1].replace(0, float('nan')) * 100).fillna(0)
+
+    # Build column config for proper formatting
+    col_config = {compare_by: st.column_config.TextColumn(compare_by)}
+    for col in year_cols:
+        if metric == "Sales ($)":
+            col_config[col] = st.column_config.NumberColumn(str(int(col)), format="$%,.0f")
+        else:
+            col_config[col] = st.column_config.NumberColumn(str(int(col)), format="%,.0f")
+
+    if 'Change' in pivot_display.columns:
+        if metric == "Sales ($)":
+            col_config['Change'] = st.column_config.NumberColumn('Change', format="$%,.0f")
+        else:
+            col_config['Change'] = st.column_config.NumberColumn('Change', format="%,.0f")
+        col_config['Change %'] = st.column_config.NumberColumn('Change %', format="%.1f%%")
+
+    st.dataframe(pivot_display, column_config=col_config, use_container_width=True, hide_index=True, height=250)
     st.markdown('</div>', unsafe_allow_html=True)
 
 
