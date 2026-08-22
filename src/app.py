@@ -132,70 +132,49 @@ st.markdown("""
         margin-bottom: 20px;
     }
 
-    /* KPI Card base - colorful style */
+    /* KPI Card - single accent color, clean style */
     .kpi-card {
+        background: rgba(59, 130, 246, 0.08);
+        border: 1px solid rgba(59, 130, 246, 0.2);
         border-radius: 8px;
-        padding: 16px 20px;
-        position: relative;
-        overflow: hidden;
-        border: 1px solid;
-    }
-
-    .kpi-card-blue {
-        background: rgba(59, 130, 246, 0.15);
-        border-color: rgba(59, 130, 246, 0.3);
-    }
-    .kpi-card-green {
-        background: rgba(34, 197, 94, 0.15);
-        border-color: rgba(34, 197, 94, 0.3);
-    }
-    .kpi-card-yellow {
-        background: rgba(234, 179, 8, 0.15);
-        border-color: rgba(234, 179, 8, 0.3);
-    }
-    .kpi-card-red {
-        background: rgba(239, 68, 68, 0.15);
-        border-color: rgba(239, 68, 68, 0.3);
-    }
-    .kpi-card-purple {
-        background: rgba(168, 85, 247, 0.15);
-        border-color: rgba(168, 85, 247, 0.3);
+        padding: 20px 24px;
     }
 
     .kpi-label {
-        font-size: 18px !important;
-        font-weight: 600 !important;
-        color: #ffffff !important;
-        margin-bottom: 14px !important;
+        font-size: 13px !important;
+        font-weight: 500 !important;
+        color: #9ca3af !important;
+        margin-bottom: 8px !important;
         text-transform: uppercase !important;
         letter-spacing: 0.05em !important;
     }
 
     .kpi-value {
         color: #ffffff !important;
-        font-size: 40px !important;
-        font-weight: 700 !important;
+        font-size: 32px !important;
+        font-weight: 600 !important;
         line-height: 1.2 !important;
     }
 
     .kpi-subtitle {
-        color: #9ca3af !important;
-        font-size: 16px !important;
-        margin-top: 10px !important;
+        color: #6b7280 !important;
+        font-size: 13px !important;
+        margin-top: 6px !important;
     }
 
-    .kpi-icon {
-        position: absolute;
-        top: 24px;
-        right: 24px;
-        font-size: 28px;
+    /* Section divider */
+    .section-divider {
+        border-top: 1px solid #1f2937;
+        margin: 32px 0;
     }
 
-    .kpi-icon-blue { color: #60a5fa; }
-    .kpi-icon-green { color: #4ade80; }
-    .kpi-icon-yellow { color: #facc15; }
-    .kpi-icon-red { color: #f87171; }
-    .kpi-icon-purple { color: #c084fc; }
+    /* Alternating row colors for tables */
+    [data-testid="stDataFrame"] tbody tr:nth-child(even) {
+        background-color: rgba(31, 41, 55, 0.3) !important;
+    }
+    [data-testid="stDataFrame"] tbody tr:nth-child(odd) {
+        background-color: rgba(17, 24, 39, 0.3) !important;
+    }
 
     /* Section header */
     .section-header {
@@ -459,16 +438,20 @@ def format_number(value):
     return f"{value:,.0f}"
 
 
-def render_kpi_card(label, value, color="blue", icon="", subtitle=""):
-    """Render a styled KPI card matching inventory dashboard."""
+def render_kpi_card(label, value, subtitle=""):
+    """Render a clean KPI card."""
     st.markdown(f"""
-        <div class="kpi-card kpi-card-{color}" style="position: relative;">
-            <div style="position: absolute; top: 16px; right: 20px; font-size: 24px;">{icon}</div>
-            <div style="font-size: 14px; font-weight: 400; color: #9ca3af; margin-bottom: 8px;">{label}</div>
-            <div style="color: #ffffff; font-size: 32px; font-weight: 600; line-height: 1.2;">{value}</div>
-            {f'<div style="color: #6b7280; font-size: 13px; margin-top: 6px;">{subtitle}</div>' if subtitle else ''}
+        <div class="kpi-card">
+            <div class="kpi-label">{label}</div>
+            <div class="kpi-value">{value}</div>
+            {f'<div class="kpi-subtitle">{subtitle}</div>' if subtitle else ''}
         </div>
     """, unsafe_allow_html=True)
+
+
+def render_section_divider():
+    """Render a subtle section divider."""
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
 
 def render_card_header(title):
@@ -549,52 +532,22 @@ def render_sales_overview(df):
     # ===================
     # KPI CARDS
     # ===================
-    cols = st.columns(5)
+    cols = st.columns(4)
 
     with cols[0]:
-        render_kpi_card(
-            "Total Sales",
-            format_currency(total_revenue),
-            "blue",
-            "💰",
-            f"{unique_items:,} items"
-        )
+        render_kpi_card("Total Sales", format_currency(total_revenue))
 
     with cols[1]:
-        render_kpi_card(
-            "Units Sold",
-            format_number(total_qty),
-            "purple",
-            "🛒"
-        )
+        render_kpi_card("Units Sold", format_number(total_qty))
 
     with cols[2]:
         avg_daily = total_revenue / operating_days if operating_days > 0 else 0
-        render_kpi_card(
-            "Daily Average",
-            format_currency(avg_daily),
-            "green",
-            "📈"
-        )
+        render_kpi_card("Daily Average", format_currency(avg_daily))
 
     with cols[3]:
-        render_kpi_card(
-            "Operating Days",
-            format_number(operating_days),
-            "yellow",
-            "📅"
-        )
+        render_kpi_card("Operating Days", format_number(operating_days))
 
-    with cols[4]:
-        avg_per_item = total_revenue / total_qty if total_qty > 0 else 0
-        render_kpi_card(
-            "Avg Item Price",
-            f"${avg_per_item:.2f}",
-            "red",
-            "🏷️"
-        )
-
-    st.markdown("<div style='height: 24px'></div>", unsafe_allow_html=True)
+    render_section_divider()
 
     # ===================
     # CHARTS ROW 1 (using paid_items only)
@@ -1170,54 +1123,20 @@ def render_remaining_season_forecast(df):
         projected_yoy_change = 0
 
     # KPIs
-    st.markdown("<div style='height: 8px'></div>", unsafe_allow_html=True)
     cols = st.columns(5)
-
     with cols[0]:
-        st.markdown(f"""
-            <div style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; padding: 16px 20px;">
-                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">{current_year} YTD Sales</div>
-                <div style="color: white; font-size: 28px; font-weight: 600;">${this_year_ytd_sales:,.0f}</div>
-            </div>
-        """, unsafe_allow_html=True)
-
+        render_kpi_card(f"{current_year} YTD Sales", f"${this_year_ytd_sales:,.0f}")
     with cols[1]:
-        st.markdown(f"""
-            <div style="background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 8px; padding: 16px 20px;">
-                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">{last_year} Remaining</div>
-                <div style="color: white; font-size: 28px; font-weight: 600;">${last_year_remaining_sales:,.0f}</div>
-                <div style="color: #6b7280; font-size: 12px; margin-top: 4px;">{today.strftime('%b %d')} - Nov 30</div>
-            </div>
-        """, unsafe_allow_html=True)
-
+        render_kpi_card(f"{last_year} Remaining", f"${last_year_remaining_sales:,.0f}", f"{today.strftime('%b %d')} - Nov 30")
     with cols[2]:
-        st.markdown(f"""
-            <div style="background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 8px; padding: 16px 20px;">
-                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">{current_year} Projected</div>
-                <div style="color: white; font-size: 28px; font-weight: 600;">${projected_full_season:,.0f}</div>
-                <div style="color: #6b7280; font-size: 12px; margin-top: 4px;">YTD + {last_year} rest</div>
-            </div>
-        """, unsafe_allow_html=True)
-
+        render_kpi_card(f"{current_year} Projected", f"${projected_full_season:,.0f}", f"YTD + {last_year} rest")
     with cols[3]:
-        st.markdown(f"""
-            <div style="background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 8px; padding: 16px 20px;">
-                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">{last_year} Full Season</div>
-                <div style="color: white; font-size: 28px; font-weight: 600;">${last_year_full_sales:,.0f}</div>
-            </div>
-        """, unsafe_allow_html=True)
-
+        render_kpi_card(f"{last_year} Full Season", f"${last_year_full_sales:,.0f}")
     with cols[4]:
-        change_color = "#22c55e" if projected_yoy_change >= 0 else "#ef4444"
         change_sign = "+" if projected_yoy_change >= 0 else ""
-        st.markdown(f"""
-            <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 16px 20px;">
-                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">Projected YoY</div>
-                <div style="color: {change_color}; font-size: 28px; font-weight: 600;">{change_sign}{projected_yoy_change:.1f}%</div>
-            </div>
-        """, unsafe_allow_html=True)
+        render_kpi_card("Projected YoY", f"{change_sign}{projected_yoy_change:.1f}%")
 
-    st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
+    render_section_divider()
 
     # Category breakdown for remaining season
     st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -1240,17 +1159,14 @@ def render_remaining_season_forecast(df):
     # Rename for clarity
     cat_data = cat_data.rename(columns={'Projected Sales': f'{last_year} Remaining Sales'})
 
-    # Export buttons for category data
+    # Export button for category data
     cat_export = cat_data[['Category', f'{current_year} YTD', f'{last_year} Remaining Sales', f'{current_year} Projected Total']].copy()
-    col_space, col_csv, col_excel = st.columns([4, 1, 1])
-    with col_csv:
-        csv_data = cat_export.to_csv(index=False)
-        st.download_button("📄 CSV", csv_data, "remaining_season_categories.csv", "text/csv", use_container_width=True, key="rsf_cat_csv")
+    col_space, col_excel = st.columns([5, 1])
     with col_excel:
         excel_buffer = io.BytesIO()
         cat_export.to_excel(excel_buffer, index=False, engine='openpyxl')
         excel_buffer.seek(0)
-        st.download_button("📊 Excel", excel_buffer, "remaining_season_categories.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key="rsf_cat_excel")
+        st.download_button("Export Excel", excel_buffer, "remaining_season_categories.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key="rsf_cat_excel")
 
     col_config = {
         f'{last_year} Remaining Sales': st.column_config.NumberColumn(f'{last_year} Remaining', format="$%,.0f"),
@@ -1273,16 +1189,13 @@ def render_remaining_season_forecast(df):
     item_data.columns = ['Item', 'Category', 'Subcategory', 'Projected Sales', 'Projected Qty']
     item_data = item_data.sort_values('Projected Sales', ascending=False)
 
-    # Export buttons for item data
-    col_space, col_csv, col_excel = st.columns([4, 1, 1])
-    with col_csv:
-        csv_data = item_data.to_csv(index=False)
-        st.download_button("📄 CSV", csv_data, "remaining_season_items.csv", "text/csv", use_container_width=True, key="rsf_item_csv")
+    # Export button for item data
+    col_space, col_excel = st.columns([5, 1])
     with col_excel:
         excel_buffer = io.BytesIO()
         item_data.to_excel(excel_buffer, index=False, engine='openpyxl')
         excel_buffer.seek(0)
-        st.download_button("📊 Excel", excel_buffer, "remaining_season_items.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key="rsf_item_excel")
+        st.download_button("Export Excel", excel_buffer, "remaining_season_items.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key="rsf_item_excel")
 
     col_config = {
         'Projected Sales': st.column_config.NumberColumn('Projected Sales', format="$%,.0f"),
@@ -1476,42 +1389,15 @@ def render_forecast(df):
 
     cols = st.columns(4)
     with cols[0]:
-        st.markdown(f"""
-            <div style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; padding: 16px 20px; position: relative;">
-                <div style="position: absolute; top: 16px; right: 20px; font-size: 20px;">📊</div>
-                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">Items Selected</div>
-                <div style="color: white; font-size: 32px; font-weight: 600;">{len(projections)}</div>
-            </div>
-        """, unsafe_allow_html=True)
-
+        render_kpi_card("Items Selected", f"{len(projections)}")
     with cols[1]:
-        st.markdown(f"""
-            <div style="background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 8px; padding: 16px 20px; position: relative;">
-                <div style="position: absolute; top: 16px; right: 20px; font-size: 20px;">📈</div>
-                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">Avg Daily Total</div>
-                <div style="color: white; font-size: 32px; font-weight: 600;">{avg_daily_total:,.0f}</div>
-            </div>
-        """, unsafe_allow_html=True)
-
+        render_kpi_card("Avg Daily Total", f"{avg_daily_total:,.0f}")
     with cols[2]:
-        st.markdown(f"""
-            <div style="background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 8px; padding: 16px 20px; position: relative;">
-                <div style="position: absolute; top: 16px; right: 20px; font-size: 20px;">📦</div>
-                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">Projected Total</div>
-                <div style="color: white; font-size: 32px; font-weight: 600;">{total_projected:,.0f}</div>
-            </div>
-        """, unsafe_allow_html=True)
-
+        render_kpi_card("Projected Total", f"{total_projected:,.0f}")
     with cols[3]:
-        st.markdown(f"""
-            <div style="background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 8px; padding: 16px 20px; position: relative;">
-                <div style="position: absolute; top: 16px; right: 20px; font-size: 20px;">🛒</div>
-                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">Order Qty (+Buffer)</div>
-                <div style="color: white; font-size: 32px; font-weight: 600;">{total_with_buffer:,.0f}</div>
-            </div>
-        """, unsafe_allow_html=True)
+        render_kpi_card("Order Qty (+Buffer)", f"{total_with_buffer:,.0f}")
 
-    st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
+    render_section_divider()
 
     # Projection table
     st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -1525,16 +1411,13 @@ def render_forecast(df):
 
     st.dataframe(display_df, use_container_width=True, hide_index=True, height=400)
 
-    # Export buttons
-    col1, col2, col3, col4 = st.columns([3, 0.5, 1, 1])
-    with col3:
-        csv_data = proj_df.to_csv(index=False)
-        st.download_button("📄 CSV", csv_data, "order_projections.csv", "text/csv", use_container_width=True)
-    with col4:
+    # Export button
+    col_space, col_excel = st.columns([5, 1])
+    with col_excel:
         excel_buffer = io.BytesIO()
         proj_df.to_excel(excel_buffer, index=False, engine='openpyxl')
         excel_buffer.seek(0)
-        st.download_button("📊 Excel", excel_buffer, "order_projections.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+        st.download_button("Export Excel", excel_buffer, "order_projections.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1713,58 +1596,26 @@ def render_items(df):
 
     avg_price = total_sales / total_qty if total_qty > 0 else 0
 
-    # Summary bubbles - colorful style with icons
-    st.markdown("<div style='height: 16px'></div>", unsafe_allow_html=True)
-
+    # Summary KPIs
     cols = st.columns(4)
     with cols[0]:
-        st.markdown(f"""
-            <div style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; padding: 16px 20px; position: relative;">
-                <div style="position: absolute; top: 16px; right: 20px; font-size: 20px;">🏷️</div>
-                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">Total Items</div>
-                <div style="color: white; font-size: 32px; font-weight: 600;">{total_items:,}</div>
-            </div>
-        """, unsafe_allow_html=True)
-
+        render_kpi_card("Total Items", f"{total_items:,}")
     with cols[1]:
-        st.markdown(f"""
-            <div style="background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 8px; padding: 16px 20px; position: relative;">
-                <div style="position: absolute; top: 16px; right: 20px; font-size: 20px;">🛒</div>
-                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">Total Sold</div>
-                <div style="color: white; font-size: 32px; font-weight: 600;">{total_qty:,.0f}</div>
-            </div>
-        """, unsafe_allow_html=True)
-
+        render_kpi_card("Total Sold", f"{total_qty:,.0f}")
     with cols[2]:
-        st.markdown(f"""
-            <div style="background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 8px; padding: 16px 20px; position: relative;">
-                <div style="position: absolute; top: 16px; right: 20px; font-size: 20px;">💰</div>
-                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">Total Sales</div>
-                <div style="color: white; font-size: 32px; font-weight: 600;">${total_sales:,.0f}</div>
-            </div>
-        """, unsafe_allow_html=True)
-
+        render_kpi_card("Total Sales", f"${total_sales:,.0f}")
     with cols[3]:
-        st.markdown(f"""
-            <div style="background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 8px; padding: 16px 20px; position: relative;">
-                <div style="position: absolute; top: 16px; right: 20px; font-size: 20px;">💵</div>
-                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">Avg Price</div>
-                <div style="color: white; font-size: 32px; font-weight: 600;">${avg_price:.2f}</div>
-            </div>
-        """, unsafe_allow_html=True)
+        render_kpi_card("Avg Price", f"${avg_price:.2f}")
 
-    st.markdown("<div style='height: 16px'></div>", unsafe_allow_html=True)
+    render_section_divider()
 
     # Export button row
-    col_space, col_csv, col_excel = st.columns([4, 1, 1])
-    with col_csv:
-        csv_data = item_data.to_csv(index=False)
-        st.download_button("📄 CSV", csv_data, "items_export.csv", "text/csv", use_container_width=True)
+    col_space, col_excel = st.columns([5, 1])
     with col_excel:
         excel_buffer = io.BytesIO()
         item_data.to_excel(excel_buffer, index=False, engine='openpyxl')
         excel_buffer.seek(0)
-        st.download_button("📊 Excel", excel_buffer, "items_export.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+        st.download_button("Export Excel", excel_buffer, "items_export.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
     # Prepare display data - keep numeric for proper sorting
     if date_range == 'Year to Date' and len(ytd_years) > 1:
@@ -2308,38 +2159,15 @@ def render_locations():
 
     cols = st.columns(4)
     with cols[0]:
-        st.markdown(f"""
-            <div style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; padding: 16px 20px;">
-                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">Total Sales</div>
-                <div style="color: white; font-size: 32px; font-weight: 600;">${total_sales:,.0f}</div>
-            </div>
-        """, unsafe_allow_html=True)
-
+        render_kpi_card("Total Sales", f"${total_sales:,.0f}")
     with cols[1]:
-        st.markdown(f"""
-            <div style="background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 8px; padding: 16px 20px;">
-                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">Daily Average</div>
-                <div style="color: white; font-size: 32px; font-weight: 600;">${daily_avg:,.0f}</div>
-            </div>
-        """, unsafe_allow_html=True)
-
+        render_kpi_card("Daily Average", f"${daily_avg:,.0f}")
     with cols[2]:
-        st.markdown(f"""
-            <div style="background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 8px; padding: 16px 20px;">
-                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">Operating Days</div>
-                <div style="color: white; font-size: 32px; font-weight: 600;">{operating_days}</div>
-            </div>
-        """, unsafe_allow_html=True)
-
+        render_kpi_card("Operating Days", f"{operating_days}")
     with cols[3]:
-        st.markdown(f"""
-            <div style="background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 8px; padding: 16px 20px;">
-                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">Locations</div>
-                <div style="color: white; font-size: 32px; font-weight: 600;">{num_locations}</div>
-            </div>
-        """, unsafe_allow_html=True)
+        render_kpi_card("Locations", f"{num_locations}")
 
-    st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
+    render_section_divider()
 
     # Sales by location table
     st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -2376,16 +2204,13 @@ def render_locations():
         location_summary['Daily Avg'] = location_summary['Total Sales'] / location_summary['Days']
         location_summary = location_summary.sort_values('Total Sales', ascending=False)
 
-    # Export buttons
-    col_space, col_csv, col_excel = st.columns([4, 1, 1])
-    with col_csv:
-        csv_data = location_summary.to_csv(index=False)
-        st.download_button("📄 CSV", csv_data, "location_sales.csv", "text/csv", use_container_width=True)
+    # Export button
+    col_space, col_excel = st.columns([5, 1])
     with col_excel:
         excel_buffer = io.BytesIO()
         location_summary.to_excel(excel_buffer, index=False, engine='openpyxl')
         excel_buffer.seek(0)
-        st.download_button("📊 Excel", excel_buffer, "location_sales.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+        st.download_button("Export Excel", excel_buffer, "location_sales.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
     # Build column config for proper sorting with formatted display (with commas)
     col_config = {}
