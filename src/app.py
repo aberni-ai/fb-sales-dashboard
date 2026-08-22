@@ -1617,12 +1617,14 @@ def render_upload():
     if db_exists():
         try:
             year_data = read_sql("""
-                SELECT year as Year, COUNT(DISTINCT date) as Days, SUM(total_price) as Revenue
+                SELECT year, COUNT(DISTINCT date) as days, SUM(total_price) as revenue
                 FROM sales_featured
                 WHERE year >= 2025
                 GROUP BY year ORDER BY year
             """)
             if len(year_data) > 0:
+                # Rename columns for display
+                year_data.columns = ['Year', 'Days', 'Revenue']
                 year_data['Revenue'] = year_data['Revenue'].apply(lambda x: f"${x:,.0f}")
                 st.dataframe(year_data, use_container_width=True, hide_index=True, height=120)
             else:
