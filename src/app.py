@@ -2118,14 +2118,28 @@ def process_location_uploads(uploaded_files):
 # =============================================================================
 
 def main():
+    # Get last updated date from item sales
+    last_updated = ""
+    try:
+        if db_exists():
+            result = read_sql("SELECT MAX(date) as max_date FROM sales_featured")
+            if len(result) > 0 and result['max_date'].iloc[0]:
+                max_date = pd.to_datetime(result['max_date'].iloc[0])
+                last_updated = max_date.strftime('%B %d, %Y')
+    except:
+        pass
+
     # Header
-    st.markdown("""
+    last_updated_html = f'<div style="color: #6b7280; font-size: 13px; margin-top: 4px;">Last Updated: {last_updated}</div>' if last_updated else ''
+
+    st.markdown(f"""
         <div class="dash-header">
             <div>
                 <span class="dash-title">Canobie Lake Park</span>
                 <span class="badge">F&B Sales</span>
             </div>
             <div class="dash-subtitle">Food & Beverage Sales Dashboard</div>
+            {last_updated_html}
         </div>
     """, unsafe_allow_html=True)
 
