@@ -2039,17 +2039,17 @@ def render_locations():
         excel_buffer.seek(0)
         st.download_button("📊 Excel", excel_buffer, "location_sales.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
-    # Build column config for proper sorting with formatted display
+    # Build column config for proper sorting with formatted display (with commas)
     col_config = {}
     for col in location_summary.columns:
         if col == 'Location':
             continue
         elif col == 'Days':
-            col_config[col] = st.column_config.NumberColumn(col, format="%d")
+            col_config[col] = st.column_config.NumberColumn(col, format="%,d")
         elif 'Change %' in col:
             col_config[col] = st.column_config.NumberColumn(col, format="%.1f%%")
         elif 'Change' in col or 'Sales' in col or 'Avg' in col:
-            col_config[col] = st.column_config.NumberColumn(col, format="$%.0f")
+            col_config[col] = st.column_config.NumberColumn(col, format="$%,.0f")
 
     st.dataframe(location_summary, column_config=col_config, use_container_width=True, hide_index=True, height=400)
     st.markdown('</div>', unsafe_allow_html=True)
