@@ -1900,13 +1900,18 @@ def render_locations():
     # Filter options
     years = sorted([y for y in loc_df['year'].unique() if y is not None and pd.notna(y)])
 
-    col1, col2, col3, col4 = st.columns([1.2, 1, 1, 1.5])
+    col1, col2, col3, col4 = st.columns([1.2, 1.5, 1, 1])
 
     with col1:
         date_range = st.selectbox("Date Range", ['Year to Date', 'Full Season (May-Nov)', 'Full Year', 'Custom Range'], key="loc_daterange")
 
     with col2:
-        selected_year = st.selectbox("Year", ['All Years'] + [str(y) for y in years], key="loc_year")
+        if date_range == 'Year to Date':
+            # Multi-select for YTD comparison
+            selected_years = st.multiselect("Compare Years", [str(y) for y in years], default=[str(max(years))], key="loc_years_multi")
+        else:
+            selected_year = st.selectbox("Year", ['All Years'] + [str(y) for y in years], key="loc_year")
+            selected_years = []
 
     # Custom date range inputs
     if date_range == 'Custom Range':
@@ -1918,23 +1923,32 @@ def render_locations():
     # Apply filters
     filtered_df = loc_df.copy()
 
-    # Year filter
-    if selected_year != 'All Years':
-        filtered_df = filtered_df[filtered_df['year'] == int(selected_year)]
+    # Handle YTD multi-year comparison
+    ytd_comparison_mode = date_range == 'Year to Date' and len(selected_years) > 1
 
-    # Date range filter
     if date_range == 'Year to Date':
+        # Filter to selected years
+        if selected_years:
+            year_list = [int(y) for y in selected_years]
+            filtered_df = filtered_df[filtered_df['year'].isin(year_list)]
+        # Filter to YTD (up to current month/day)
         filtered_df = filtered_df[
             (filtered_df['month'] < current_month) |
             ((filtered_df['month'] == current_month) & (filtered_df['date'].dt.day <= current_day))
         ]
-    elif date_range == 'Full Season (May-Nov)':
-        filtered_df = filtered_df[filtered_df['month'].isin([5, 6, 7, 8, 9, 10, 11])]
-    elif date_range == 'Custom Range':
-        filtered_df = filtered_df[
-            (filtered_df['date'].dt.date >= start_date) &
-            (filtered_df['date'].dt.date <= end_date)
-        ]
+    else:
+        # Year filter for non-YTD modes
+        if selected_year != 'All Years':
+            filtered_df = filtered_df[filtered_df['year'] == int(selected_year)]
+
+        # Date range filter
+        if date_range == 'Full Season (May-Nov)':
+            filtered_df = filtered_df[filtered_df['month'].isin([5, 6, 7, 8, 9, 10, 11])]
+        elif date_range == 'Custom Range':
+            filtered_df = filtered_df[
+                (filtered_df['date'].dt.date >= start_date) &
+                (filtered_df['date'].dt.date <= end_date)
+            ]
 
     loc_df = filtered_df
 
@@ -1983,13 +1997,36 @@ def render_locations():
     st.markdown('<div class="card">', unsafe_allow_html=True)
     render_card_header("Sales by Location")
 
-    location_summary = loc_df.groupby('location').agg({
-        'gross_sales': 'sum',
-        'date': 'nunique'
-    }).reset_index()
-    location_summary.columns = ['Location', 'Total Sales', 'Days']
-    location_summary['Daily Avg'] = location_summary['Total Sales'] / location_summary['Days']
-    location_summary = location_summary.sort_values('Total Sales', ascending=False)
+    # Build table based on mode
+    if ytd_comparison_mode:
+        # Create pivot table with separate columns for each year
+        pivot_data = loc_df.groupby(['location', 'year'])['gross_sales'].sum().unstack(fill_value=0)
+        pivot_data.columns = [f'Sales {int(y)}' for y in pivot_data.columns]
+        pivot_data = pivot_data.reset_index()
+        pivot_data.columns = ['Location'] + list(pivot_data.columns[1:])
+
+        # Calculate total for sorting
+        sales_cols = [c for c in pivot_data.columns if c.startswith('Sales')]
+        pivot_data['_total'] = pivot_data[sales_cols].sum(axis=1)
+        pivot_data = pivot_data.sort_values('_total', ascending=False)
+        pivot_data = pivot_data.drop(columns=['_total'])
+
+        # Calculate YoY change if we have 2 years
+        if len(sales_cols) == 2:
+            col1, col2 = sales_cols[0], sales_cols[1]
+            pivot_data['Change'] = pivot_data[col2] - pivot_data[col1]
+            pivot_data['Change %'] = ((pivot_data[col2] - pivot_data[col1]) / pivot_data[col1].replace(0, float('nan')) * 100).fillna(0)
+
+        location_summary = pivot_data
+    else:
+        # Standard single-period view
+        location_summary = loc_df.groupby('location').agg({
+            'gross_sales': 'sum',
+            'date': 'nunique'
+        }).reset_index()
+        location_summary.columns = ['Location', 'Total Sales', 'Days']
+        location_summary['Daily Avg'] = location_summary['Total Sales'] / location_summary['Days']
+        location_summary = location_summary.sort_values('Total Sales', ascending=False)
 
     # Export buttons
     col_space, col_csv, col_excel = st.columns([4, 1, 1])
@@ -2002,12 +2039,19 @@ def render_locations():
         excel_buffer.seek(0)
         st.download_button("📊 Excel", excel_buffer, "location_sales.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
-    # Format for display with commas
-    display_df = location_summary.copy()
-    display_df['Total Sales'] = display_df['Total Sales'].apply(lambda x: f"${x:,.0f}")
-    display_df['Daily Avg'] = display_df['Daily Avg'].apply(lambda x: f"${x:,.0f}")
+    # Build column config for proper sorting with formatted display
+    col_config = {}
+    for col in location_summary.columns:
+        if col == 'Location':
+            continue
+        elif col == 'Days':
+            col_config[col] = st.column_config.NumberColumn(col, format="%d")
+        elif 'Change %' in col:
+            col_config[col] = st.column_config.NumberColumn(col, format="%.1f%%")
+        elif 'Change' in col or 'Sales' in col or 'Avg' in col:
+            col_config[col] = st.column_config.NumberColumn(col, format="$%.0f")
 
-    st.dataframe(display_df, use_container_width=True, hide_index=True, height=400)
+    st.dataframe(location_summary, column_config=col_config, use_container_width=True, hide_index=True, height=400)
     st.markdown('</div>', unsafe_allow_html=True)
 
     # Upload section at bottom
