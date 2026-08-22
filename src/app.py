@@ -774,7 +774,9 @@ def render_comparison(df):
 
     with col2:
         if compare_by == "Category":
-            selected_items = st.multiselect("Select Categories", categories, default=categories[:3] if len(categories) >= 3 else categories, key="comp_cats")
+            # Default to main categories
+            default_cats = [c for c in ["Beverage", "Alc Beverage", "Ice Cream", "Food"] if c in categories]
+            selected_items = st.multiselect("Select Categories", categories, default=default_cats if default_cats else categories[:3], key="comp_cats")
         elif compare_by == "Subcategory":
             selected_items = st.multiselect("Select Subcategories", subcategories, default=subcategories[:3] if len(subcategories) >= 3 else subcategories, key="comp_subcats")
         else:
