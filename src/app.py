@@ -940,7 +940,7 @@ def render_comparison(df):
         # Toggle between monthly and cumulative
         col1, col2 = st.columns([3, 1])
         with col1:
-            render_card_header("Season Trend")
+            render_card_header("Season Trend (Aligned by Date)")
         with col2:
             trend_type = st.selectbox("View", ["Cumulative", "Monthly"], key="comp_trend_type", label_visibility="collapsed")
 
@@ -949,10 +949,18 @@ def render_comparison(df):
         daily_data.columns = [group_col, 'year', 'date', metric_col]
         daily_data['date'] = pd.to_datetime(daily_data['date'])
         daily_data['month'] = daily_data['date'].dt.month
-        daily_data['day_of_year'] = daily_data['date'].dt.dayofyear
+        daily_data['day_of_month'] = daily_data['date'].dt.day
 
         # Filter to operating season (May-Nov)
         daily_data = daily_data[daily_data['month'].isin([5, 6, 7, 8, 9, 10, 11])]
+
+        # Use a reference year (2000) to align all dates on the same x-axis
+        # This makes May 1, 2025 and May 1, 2026 appear at the same x position
+        REFERENCE_YEAR = 2000
+        daily_data['aligned_date'] = daily_data.apply(
+            lambda row: datetime(REFERENCE_YEAR, int(row['month']), int(row['day_of_month'])),
+            axis=1
+        )
 
         fig = go.Figure()
 
@@ -963,7 +971,7 @@ def render_comparison(df):
         for item in selected_items:
             item_data = daily_data[daily_data[group_col] == item]
             for year in sorted(item_data['year'].unique()):
-                year_data = item_data[item_data['year'] == year].sort_values('date')
+                year_data = item_data[item_data['year'] == year].sort_values('aligned_date')
 
                 if len(year_data) == 0:
                     continue
@@ -982,7 +990,7 @@ def render_comparison(df):
 
                 if trend_type == "Cumulative":
                     fig.add_trace(go.Scatter(
-                        x=year_data['date'],
+                        x=year_data['aligned_date'],
                         y=year_data['value'],
                         mode='lines',
                         name=label,
@@ -1004,7 +1012,7 @@ def render_comparison(df):
         layout = get_chart_layout(350)
         layout['legend'] = dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1, font=dict(color='#e5e7eb', size=12))
         layout['margin'] = dict(l=10, r=10, t=40, b=30)
-        layout['hovermode'] = 'x unified' if trend_type == "Monthly" else 'closest'
+        layout['hovermode'] = 'x unified'
 
         if trend_type == "Cumulative":
             layout['xaxis']['tickformat'] = '%b %d'
@@ -1034,6 +1042,207 @@ def render_comparison(df):
 # =============================================================================
 # TAB 3: FORECAST / ORDER PLANNING
 # =============================================================================
+
+def render_remaining_season_forecast(df):
+    """Render remaining season forecast based on last year's same period."""
+
+    st.markdown("""
+        <div class="section-header">
+            <div class="section-title">Remaining Season Forecast</div>
+            <div class="section-subtitle">Project remaining season sales based on last year's performance for the same period</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Get date info
+    today = datetime.now()
+    current_year = today.year
+    last_year = current_year - 1
+
+    # Season end is typically November 30
+    season_end_month = 11
+    season_end_day = 30
+
+    # Calculate last year's data from today's date through end of season
+    # Use same month/day as today through Nov 30
+
+    # Get last year's remaining season data
+    last_year_df = df[df['year'] == last_year].copy()
+
+    # Filter to "today through end of season" using month/day logic
+    last_year_remaining = last_year_df[
+        (last_year_df['month'] > today.month) |
+        ((last_year_df['month'] == today.month) & (last_year_df['day_of_month'] >= today.day))
+    ]
+    # Also filter out anything past season end
+    last_year_remaining = last_year_remaining[
+        (last_year_remaining['month'] <= season_end_month)
+    ]
+
+    if len(last_year_remaining) == 0:
+        st.warning(f"No data found for {last_year} from {today.strftime('%B %d')} through end of season.")
+        return
+
+    # Also get this year's data so far for context
+    this_year_df = df[df['year'] == current_year].copy()
+    this_year_ytd = this_year_df[
+        (this_year_df['month'] < today.month) |
+        ((this_year_df['month'] == today.month) & (this_year_df['day_of_month'] < today.day))
+    ]
+
+    # Calculate totals
+    last_year_remaining_sales = last_year_remaining['total_price'].sum()
+    last_year_remaining_qty = last_year_remaining['total_qty'].sum()
+    last_year_remaining_days = last_year_remaining['date'].dt.date.nunique()
+
+    this_year_ytd_sales = this_year_ytd['total_price'].sum()
+    this_year_ytd_qty = this_year_ytd['total_qty'].sum()
+
+    # Projected full season = YTD + remaining (based on last year)
+    projected_full_season = this_year_ytd_sales + last_year_remaining_sales
+
+    # Get last year's full season for comparison
+    last_year_season = last_year_df[last_year_df['month'].isin([5, 6, 7, 8, 9, 10, 11])]
+    last_year_full_sales = last_year_season['total_price'].sum()
+
+    # Calculate YoY projection vs actual
+    if last_year_full_sales > 0:
+        projected_yoy_change = ((projected_full_season - last_year_full_sales) / last_year_full_sales) * 100
+    else:
+        projected_yoy_change = 0
+
+    # KPIs
+    st.markdown("<div style='height: 8px'></div>", unsafe_allow_html=True)
+    cols = st.columns(5)
+
+    with cols[0]:
+        st.markdown(f"""
+            <div style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; padding: 16px 20px;">
+                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">{current_year} YTD Sales</div>
+                <div style="color: white; font-size: 28px; font-weight: 600;">${this_year_ytd_sales:,.0f}</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    with cols[1]:
+        st.markdown(f"""
+            <div style="background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 8px; padding: 16px 20px;">
+                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">{last_year} Remaining</div>
+                <div style="color: white; font-size: 28px; font-weight: 600;">${last_year_remaining_sales:,.0f}</div>
+                <div style="color: #6b7280; font-size: 12px; margin-top: 4px;">{today.strftime('%b %d')} - Nov 30</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    with cols[2]:
+        st.markdown(f"""
+            <div style="background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 8px; padding: 16px 20px;">
+                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">{current_year} Projected</div>
+                <div style="color: white; font-size: 28px; font-weight: 600;">${projected_full_season:,.0f}</div>
+                <div style="color: #6b7280; font-size: 12px; margin-top: 4px;">YTD + {last_year} rest</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    with cols[3]:
+        st.markdown(f"""
+            <div style="background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 8px; padding: 16px 20px;">
+                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">{last_year} Full Season</div>
+                <div style="color: white; font-size: 28px; font-weight: 600;">${last_year_full_sales:,.0f}</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    with cols[4]:
+        change_color = "#22c55e" if projected_yoy_change >= 0 else "#ef4444"
+        change_sign = "+" if projected_yoy_change >= 0 else ""
+        st.markdown(f"""
+            <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 16px 20px;">
+                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">Projected YoY</div>
+                <div style="color: {change_color}; font-size: 28px; font-weight: 600;">{change_sign}{projected_yoy_change:.1f}%</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
+
+    # Category breakdown for remaining season
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    render_card_header(f"Remaining Season by Category (Based on {last_year})")
+
+    cat_data = last_year_remaining.groupby('category').agg({
+        'total_price': 'sum',
+        'total_qty': 'sum'
+    }).reset_index()
+    cat_data.columns = ['Category', 'Projected Sales', 'Projected Qty']
+    cat_data = cat_data.sort_values('Projected Sales', ascending=False)
+
+    # Add this year YTD by category for comparison
+    this_year_cat = this_year_ytd.groupby('category')['total_price'].sum().reset_index()
+    this_year_cat.columns = ['Category', f'{current_year} YTD']
+    cat_data = cat_data.merge(this_year_cat, on='Category', how='left')
+    cat_data[f'{current_year} YTD'] = cat_data[f'{current_year} YTD'].fillna(0)
+    cat_data[f'{current_year} Projected Total'] = cat_data[f'{current_year} YTD'] + cat_data['Projected Sales']
+
+    # Rename for clarity
+    cat_data = cat_data.rename(columns={'Projected Sales': f'{last_year} Remaining Sales'})
+
+    col_config = {
+        f'{last_year} Remaining Sales': st.column_config.NumberColumn(f'{last_year} Remaining', format="$%,.0f"),
+        'Projected Qty': st.column_config.NumberColumn('Projected Qty', format="%,.0f"),
+        f'{current_year} YTD': st.column_config.NumberColumn(f'{current_year} YTD', format="$%,.0f"),
+        f'{current_year} Projected Total': st.column_config.NumberColumn(f'{current_year} Projected', format="$%,.0f"),
+    }
+
+    st.dataframe(cat_data[['Category', f'{current_year} YTD', f'{last_year} Remaining Sales', f'{current_year} Projected Total']], column_config=col_config, use_container_width=True, hide_index=True, height=300)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Top items for remaining season
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    render_card_header(f"Top Items - Remaining Season Projection (Based on {last_year})")
+
+    item_data = last_year_remaining.groupby('plu_name').agg({
+        'total_price': 'sum',
+        'total_qty': 'sum'
+    }).reset_index()
+    item_data.columns = ['Item', 'Projected Sales', 'Projected Qty']
+    item_data = item_data.sort_values('Projected Sales', ascending=False).head(25)
+
+    col_config = {
+        'Projected Sales': st.column_config.NumberColumn('Projected Sales', format="$%,.0f"),
+        'Projected Qty': st.column_config.NumberColumn('Projected Qty', format="%,.0f"),
+    }
+
+    st.dataframe(item_data, column_config=col_config, use_container_width=True, hide_index=True, height=400)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Daily projection chart
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    render_card_header(f"Remaining Season Daily Projection (Based on {last_year})")
+
+    daily_proj = last_year_remaining.groupby(last_year_remaining['date'].dt.date)['total_price'].sum().reset_index()
+    daily_proj.columns = ['date', 'sales']
+    daily_proj = daily_proj.sort_values('date')
+
+    # Create a "normalized" date for display (use current year dates)
+    daily_proj['display_date'] = daily_proj['date'].apply(
+        lambda d: datetime(current_year, d.month, d.day)
+    )
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=daily_proj['display_date'],
+        y=daily_proj['sales'],
+        mode='lines',
+        name=f'{last_year} Performance',
+        line=dict(color=COLORS['blue'], width=2),
+        fill='tozeroy',
+        fillcolor='rgba(59, 130, 246, 0.1)',
+        hovertemplate='%{x|%b %d}: $%{y:,.0f}<extra></extra>'
+    ))
+
+    layout = get_chart_layout(300)
+    layout['xaxis']['tickformat'] = '%b %d'
+    layout['margin'] = dict(l=10, r=10, t=10, b=30)
+    fig.update_layout(**layout)
+
+    st.plotly_chart(fig, use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
 
 def render_forecast(df):
     """Render ordering/forecast tool - project quantities needed for upcoming days."""
@@ -2204,7 +2413,13 @@ def main():
         render_comparison(df)
 
     with tab4:
-        render_forecast(df)
+        # Mode selector for Forecast tab
+        forecast_mode = st.selectbox("Forecast Mode", ["Order Planning", "Remaining Season Projection"], key="forecast_mode_select", label_visibility="collapsed")
+        st.markdown("<div style='height: 8px'></div>", unsafe_allow_html=True)
+        if forecast_mode == "Order Planning":
+            render_forecast(df)
+        else:
+            render_remaining_season_forecast(df)
 
     with tab5:
         render_locations()
