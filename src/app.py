@@ -1029,10 +1029,15 @@ def render_comparison(df):
     # Pivot table for display - keep numeric for sorting
     pivot_display = pivot_data.copy().reset_index()
 
-    # Add Change and Change % if we have exactly 2 years
+    # Rename year columns to strings for consistent column_config
     year_cols = [c for c in pivot_display.columns if c != compare_by]
+    rename_map = {c: str(int(c)) for c in year_cols}
+    pivot_display = pivot_display.rename(columns=rename_map)
+    year_cols = [str(int(c)) for c in year_cols]
+
+    # Add Change and Change % if we have exactly 2 years
     if len(year_cols) == 2:
-        col1, col2 = sorted(year_cols)  # e.g., 2025, 2026
+        col1, col2 = sorted(year_cols)  # e.g., '2025', '2026'
         pivot_display['Change'] = pivot_display[col2] - pivot_display[col1]
         pivot_display['Change %'] = ((pivot_display[col2] - pivot_display[col1]) / pivot_display[col1].replace(0, float('nan')) * 100).fillna(0)
 
@@ -1040,9 +1045,9 @@ def render_comparison(df):
     col_config = {compare_by: st.column_config.TextColumn(compare_by)}
     for col in year_cols:
         if metric == "Sales ($)":
-            col_config[col] = st.column_config.NumberColumn(str(int(col)), format="$%,.0f")
+            col_config[col] = st.column_config.NumberColumn(col, format="$%,.0f")
         else:
-            col_config[col] = st.column_config.NumberColumn(str(int(col)), format="%,.0f")
+            col_config[col] = st.column_config.NumberColumn(col, format="%,.0f")
 
     if 'Change' in pivot_display.columns:
         if metric == "Sales ($)":
