@@ -1741,6 +1741,270 @@ def render_upload():
 
 
 # =============================================================================
+# TAB 6: LOCATIONS
+# =============================================================================
+
+def load_location_data():
+    """Load location sales data from database."""
+    if not db_exists():
+        return None
+    try:
+        df = read_sql("SELECT * FROM location_sales")
+        if len(df) == 0:
+            return None
+        df['date'] = pd.to_datetime(df['date'])
+        return df
+    except:
+        return None
+
+
+def process_location_file(file_bytes, filename):
+    """
+    Process a location sales Excel file.
+    Extracts location (Agency Name) and gross_sales (Sales Gross) columns.
+    Returns (date, dataframe) or (None, None, error).
+    """
+    import pytz
+    ET = pytz.timezone('America/New_York')
+
+    try:
+        # Read the Excel file
+        df = pd.read_excel(io.BytesIO(file_bytes))
+
+        # Find the Agency Name and Sales Gross columns
+        df.columns = [str(c).strip() for c in df.columns]
+
+        # Look for the columns
+        location_col = None
+        sales_col = None
+
+        for col in df.columns:
+            col_lower = col.lower()
+            if 'agency' in col_lower or 'location' in col_lower:
+                location_col = col
+            if 'sales gross' in col_lower or 'salesgross' in col_lower or col_lower == 'sales gross':
+                sales_col = col
+
+        if not location_col or not sales_col:
+            return None, None, f"Could not find required columns. Found: {list(df.columns)}"
+
+        # Extract date from filename (Location_Sales_YYYY-MM-DD.xlsx)
+        date_match = re.search(r'(\d{4}-\d{2}-\d{2})', filename)
+        if date_match:
+            date_str = date_match.group(1)
+            operating_date = ET.localize(datetime.strptime(date_str, "%Y-%m-%d").replace(hour=12))
+        else:
+            return None, None, "Could not parse date from filename"
+
+        # Keep only the columns we need
+        result_df = df[[location_col, sales_col]].copy()
+        result_df.columns = ['location', 'gross_sales']
+
+        # Convert sales to positive numbers (they come as negatives)
+        result_df['gross_sales'] = pd.to_numeric(result_df['gross_sales'], errors='coerce').fillna(0).abs()
+
+        # Remove empty rows
+        result_df = result_df[result_df['location'].notna() & (result_df['location'] != '')]
+
+        # Add date and features
+        result_df['date'] = operating_date
+        result_df['year'] = operating_date.year
+        result_df['month'] = operating_date.month
+        result_df['day_of_week'] = operating_date.strftime('%A')
+        result_df['day_of_week_num'] = operating_date.weekday()
+
+        return operating_date, result_df, None
+
+    except Exception as e:
+        return None, None, str(e)
+
+
+def merge_location_data(new_df):
+    """Merge location data into database, handling duplicates by date/location."""
+    new_df = new_df.copy()
+    new_df['date'] = new_df['date'].dt.strftime('%Y-%m-%d %H:%M:%S')
+
+    # Delete existing records for the same dates
+    dates = list(new_df['date'].unique())
+    delete_by_dates('location_sales', dates)
+
+    # Insert new records
+    save_dataframe(new_df, 'location_sales', if_exists='append')
+
+
+def render_locations():
+    """Render the Locations tab with sales by location data."""
+
+    st.markdown("""
+        <div class="section-header">
+            <div class="section-title">Location Sales</div>
+            <div class="section-subtitle">Sales performance by location</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Load location data
+    loc_df = load_location_data()
+
+    if loc_df is None or len(loc_df) == 0:
+        st.info("No location data yet. Upload location sales files below.")
+
+        # Show upload section
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        render_card_header("Upload Location Sales Files")
+
+        st.markdown("""
+            <p style='color: #9ca3af; font-size: 15px; margin-bottom: 16px;'>
+                Upload location sales Excel files (from the Daily F&B Sales by Location email).<br>
+                <span style='color: #6b7280; font-size: 13px;'>Files should be named like: Location_Sales_2026-08-21.xlsx</span>
+            </p>
+        """, unsafe_allow_html=True)
+
+        uploaded_files = st.file_uploader("Drop location files here", type=['xlsx'], accept_multiple_files=True, key="loc_upload", label_visibility="collapsed")
+
+        if uploaded_files:
+            if st.button(f"Process {len(uploaded_files)} location file(s)", type="primary", use_container_width=True):
+                process_location_uploads(uploaded_files)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+        return
+
+    # Filter to days with >$10k gross sales
+    daily_totals = loc_df.groupby(loc_df['date'].dt.date)['gross_sales'].sum()
+    valid_dates = daily_totals[daily_totals > 10000].index
+    loc_df = loc_df[loc_df['date'].dt.date.isin(valid_dates)]
+
+    # Year filter
+    years = sorted([y for y in loc_df['year'].unique() if y is not None and pd.notna(y)])
+
+    col1, col2, col3 = st.columns([1, 1, 3])
+    with col1:
+        selected_year = st.selectbox("Year", ['All Years'] + [str(y) for y in years], key="loc_year")
+
+    if selected_year != 'All Years':
+        loc_df = loc_df[loc_df['year'] == int(selected_year)]
+
+    # KPIs
+    total_sales = loc_df['gross_sales'].sum()
+    operating_days = loc_df['date'].dt.date.nunique()
+    num_locations = loc_df['location'].nunique()
+    daily_avg = total_sales / operating_days if operating_days > 0 else 0
+
+    cols = st.columns(4)
+    with cols[0]:
+        st.markdown(f"""
+            <div style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; padding: 16px 20px;">
+                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">Total Sales</div>
+                <div style="color: white; font-size: 32px; font-weight: 600;">${total_sales:,.0f}</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    with cols[1]:
+        st.markdown(f"""
+            <div style="background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 8px; padding: 16px 20px;">
+                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">Daily Average</div>
+                <div style="color: white; font-size: 32px; font-weight: 600;">${daily_avg:,.0f}</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    with cols[2]:
+        st.markdown(f"""
+            <div style="background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 8px; padding: 16px 20px;">
+                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">Operating Days</div>
+                <div style="color: white; font-size: 32px; font-weight: 600;">{operating_days}</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    with cols[3]:
+        st.markdown(f"""
+            <div style="background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 8px; padding: 16px 20px;">
+                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">Locations</div>
+                <div style="color: white; font-size: 32px; font-weight: 600;">{num_locations}</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
+
+    # Sales by location table
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    render_card_header("Sales by Location")
+
+    location_summary = loc_df.groupby('location').agg({
+        'gross_sales': 'sum',
+        'date': 'nunique'
+    }).reset_index()
+    location_summary.columns = ['Location', 'Total Sales', 'Days']
+    location_summary['Daily Avg'] = location_summary['Total Sales'] / location_summary['Days']
+    location_summary = location_summary.sort_values('Total Sales', ascending=False)
+
+    # Format for display
+    col_config = {
+        'Total Sales': st.column_config.NumberColumn('Total Sales', format="$%.0f"),
+        'Daily Avg': st.column_config.NumberColumn('Daily Avg', format="$%.0f"),
+    }
+
+    st.dataframe(location_summary, column_config=col_config, use_container_width=True, hide_index=True, height=400)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Upload section at bottom
+    st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    render_card_header("Upload Location Sales Files")
+
+    uploaded_files = st.file_uploader("Drop location files here", type=['xlsx'], accept_multiple_files=True, key="loc_upload2", label_visibility="collapsed")
+
+    if uploaded_files:
+        if st.button(f"Process {len(uploaded_files)} location file(s)", type="primary", use_container_width=True, key="loc_process"):
+            process_location_uploads(uploaded_files)
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+def process_location_uploads(uploaded_files):
+    """Process uploaded location files."""
+    progress = st.progress(0, text="Processing files...")
+
+    processed = 0
+    errors = []
+    all_data = []
+    dates_processed = []
+
+    for i, f in enumerate(uploaded_files):
+        progress.progress((i + 1) / len(uploaded_files), text=f"Processing {f.name}...")
+
+        file_bytes = f.read()
+        operating_date, df, error = process_location_file(file_bytes, f.name)
+
+        if error:
+            errors.append(f"{f.name}: {error}")
+        elif operating_date is not None and df is not None and len(df) > 0:
+            all_data.append(df)
+            dates_processed.append(operating_date.strftime('%Y-%m-%d'))
+            processed += 1
+
+    if all_data:
+        combined_df = pd.concat(all_data, ignore_index=True)
+        merge_location_data(combined_df)
+
+        progress.empty()
+        st.success(f"✅ Processed {processed} file(s) successfully!")
+        if dates_processed:
+            st.markdown(f"<p style='color: #9ca3af; font-size: 14px;'>Dates added/updated: {', '.join(sorted(dates_processed))}</p>", unsafe_allow_html=True)
+
+        if errors:
+            with st.expander("View errors"):
+                for err in errors:
+                    st.text(err)
+
+        st.info("🔄 Refresh the page to see updated data.")
+    else:
+        progress.empty()
+        if errors:
+            st.error("No files could be processed.")
+            for err in errors:
+                st.text(err)
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 
@@ -1763,7 +2027,7 @@ def main():
         render_upload()
         return
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Sales", "Items", "Comparison", "Forecast", "Upload Data"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Sales", "Items", "Comparison", "Forecast", "Locations", "Upload Data"])
 
     with tab1:
         render_sales_overview(df)
@@ -1778,6 +2042,9 @@ def main():
         render_forecast(df)
 
     with tab5:
+        render_locations()
+
+    with tab6:
         render_upload()
 
 
