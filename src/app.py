@@ -3603,9 +3603,9 @@ def render_season_race(df):
         lambda d: datetime(REFERENCE_YEAR, d.month, d.day)
     )
 
-    # Merge on aligned date
-    merged = daily_y1[['aligned_date', 'cumulative']].merge(
-        daily_y2[['aligned_date', 'cumulative']],
+    # Merge on aligned date (include daily sales for hover)
+    merged = daily_y1[['aligned_date', 'sales', 'cumulative']].merge(
+        daily_y2[['aligned_date', 'sales', 'cumulative']],
         on='aligned_date',
         how='inner',
         suffixes=('_y1', '_y2')
@@ -3623,6 +3623,10 @@ def render_season_race(df):
     merged['diff'] = merged['cumulative_y2'] - merged['cumulative_y1']
     merged['pct_diff'] = ((merged['cumulative_y2'] - merged['cumulative_y1']) / merged['cumulative_y1'] * 100).fillna(0)
     merged['pct_diff_change'] = merged['pct_diff'].diff().fillna(0)  # Momentum
+
+    # Daily sales comparison
+    merged['daily_diff'] = merged['sales_y2'] - merged['sales_y1']
+    merged['daily_pct'] = ((merged['sales_y2'] - merged['sales_y1']) / merged['sales_y1'].replace(0, float('nan')) * 100).fillna(0)
 
     # Get final values for summary display
     final_row = merged.iloc[-1]
@@ -3680,7 +3684,7 @@ def render_season_race(df):
         showlegend=False
     ))
 
-    # Trace 1: Year 1 main line
+    # Trace 1: Year 1 main line (hover shows daily comparison)
     fig.add_trace(go.Scatter(
         x=[merged['aligned_date'].iloc[0]],
         y=[merged['cumulative_y1'].iloc[0]],
@@ -3689,7 +3693,7 @@ def render_season_race(df):
         line=dict(color='#3b82f6', width=4, shape='spline', smoothing=0.8),
         fill='tozeroy',
         fillcolor='rgba(59, 130, 246, 0.12)',
-        hovertemplate=f'<b>{year1}</b><br>${{y:,.0f}}<extra></extra>'
+        hoverinfo='skip'
     ))
 
     # Trace 2: Year 1 moving dot head
@@ -3724,7 +3728,7 @@ def render_season_race(df):
         line=dict(color='#10b981', width=4, shape='spline', smoothing=0.8),
         fill='tozeroy',
         fillcolor='rgba(16, 185, 129, 0.12)',
-        hovertemplate=f'<b>{year2}</b><br>${{y:,.0f}}<extra></extra>'
+        hoverinfo='skip'
     ))
 
     # Trace 5: Year 2 moving dot head
@@ -3736,6 +3740,37 @@ def render_season_race(df):
         marker=dict(color='#10b981', size=14, symbol='circle',
                    line=dict(color='white', width=2)),
         hoverinfo='skip',
+        showlegend=False
+    ))
+
+    # Trace 6: Invisible hover trace for daily sales comparison
+    # Build custom hover text for each date
+    hover_texts = []
+    for _, row in merged.iterrows():
+        daily_change_pct = row['daily_pct']
+        daily_change_sign = "+" if daily_change_pct >= 0 else ""
+        daily_change_color = "🟢" if daily_change_pct >= 0 else "🔴"
+
+        hover_texts.append(
+            f"<b>{row['aligned_date'].strftime('%b %d')}</b><br><br>"
+            f"<b>Daily Sales</b><br>"
+            f"{year1}: ${row['sales_y1']:,.0f}<br>"
+            f"{year2}: ${row['sales_y2']:,.0f}<br>"
+            f"{daily_change_color} {daily_change_sign}{daily_change_pct:.1f}%<br><br>"
+            f"<b>Cumulative</b><br>"
+            f"{year1}: ${row['cumulative_y1']:,.0f}<br>"
+            f"{year2}: ${row['cumulative_y2']:,.0f}<br>"
+            f"Gap: {'+' if row['pct_diff'] >= 0 else ''}{row['pct_diff']:.1f}%"
+        )
+
+    fig.add_trace(go.Scatter(
+        x=merged['aligned_date'],
+        y=merged['cumulative_y2'],
+        mode='lines',
+        name='',
+        line=dict(color='rgba(0,0,0,0)', width=0),
+        hovertemplate='%{text}<extra></extra>',
+        text=hover_texts,
         showlegend=False
     ))
 
@@ -3904,12 +3939,9 @@ def render_season_race(df):
     # Trading app style layout - dark, sleek, high contrast
     max_y = max(merged['cumulative_y1'].max(), merged['cumulative_y2'].max()) * 1.1
 
-    # Extend x-axis to show full season (May 16 through Nov 30)
-    season_start = datetime(REFERENCE_YEAR, 5, 16)
-    season_end = datetime(REFERENCE_YEAR, 11, 30)
-    # Use actual data range if it extends further
-    x_min = min(merged['aligned_date'].min(), season_start)
-    x_max = max(merged['aligned_date'].max(), season_end) if len(merged) > 0 else season_end
+    # Dynamic x-axis - expand with data, add small padding
+    x_min = merged['aligned_date'].min() - timedelta(days=2)
+    x_max = merged['aligned_date'].max() + timedelta(days=5)  # Small padding for visibility
 
     fig.update_layout(
         plot_bgcolor='rgba(10, 10, 20, 1)',
