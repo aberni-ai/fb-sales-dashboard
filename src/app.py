@@ -1357,9 +1357,13 @@ def render_comparison(df):
     # Item selector for trend
     col1, col2 = st.columns([2, 3])
     with col1:
-        trend_items = sorted(df['plu_name'].unique())
+        trend_items = sorted([i for i in df['plu_name'].unique() if i is not None and pd.notna(i)])
+        if not trend_items:
+            st.info("No items available for trend analysis.")
+            st.markdown('</div>', unsafe_allow_html=True)
+            return
         # Default to first selected item if available
-        default_item = selected_items[0] if selected_items and selected_items[0] in trend_items else trend_items[0] if trend_items else None
+        default_item = selected_items[0] if selected_items and selected_items[0] in trend_items else trend_items[0]
         selected_trend_item = st.selectbox("Select Item", trend_items, index=trend_items.index(default_item) if default_item in trend_items else 0, key="item_trend_select")
 
     # Filter data for selected item
