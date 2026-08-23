@@ -2776,12 +2776,21 @@ def render_locations():
             # Calculate % difference at each point
             merged['pct_diff'] = ((merged['cumulative_y2'] - merged['cumulative_y1']) / merged['cumulative_y1'] * 100).fillna(0)
 
-            # Find max positive and negative discrepancy
-            max_pos_idx = merged['pct_diff'].idxmax()
-            max_neg_idx = merged['pct_diff'].idxmin()
+            # Only consider dates after June 10 for max/min (small sample size before then)
+            june_10_cutoff = datetime(REFERENCE_YEAR, 6, 10)
+            merged_after_june = merged[merged.index >= june_10_cutoff]
 
-            max_pos_pct = merged.loc[max_pos_idx, 'pct_diff']
-            max_neg_pct = merged.loc[max_neg_idx, 'pct_diff']
+            # Find max positive and negative discrepancy (only after June 10)
+            if len(merged_after_june) > 0:
+                max_pos_idx = merged_after_june['pct_diff'].idxmax()
+                max_neg_idx = merged_after_june['pct_diff'].idxmin()
+                max_pos_pct = merged_after_june.loc[max_pos_idx, 'pct_diff']
+                max_neg_pct = merged_after_june.loc[max_neg_idx, 'pct_diff']
+            else:
+                max_pos_idx = merged['pct_diff'].idxmax()
+                max_neg_idx = merged['pct_diff'].idxmin()
+                max_pos_pct = merged.loc[max_pos_idx, 'pct_diff']
+                max_neg_pct = merged.loc[max_neg_idx, 'pct_diff']
 
             # Add annotations for these points
             if max_pos_pct > 0:
