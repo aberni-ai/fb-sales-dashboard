@@ -686,6 +686,112 @@ def render_sales_overview(df):
     with cols[3]:
         render_kpi_card("Operating Days", format_number(operating_days))
 
+    # ===================
+    # YoY COMPARISON (vs Last Year)
+    # ===================
+    last_year = selected_year - 1
+    if last_year in df['year'].values:
+        last_year_df = df[df['year'] == last_year]
+        last_year_paid = last_year_df[last_year_df['total_price'] > 0]
+
+        # Get comparable YTD data for last year
+        today = datetime.now()
+        # Filter last year to same point in season (by month/day)
+        last_year_ytd = last_year_paid[
+            (last_year_paid['date'].dt.month < today.month) |
+            ((last_year_paid['date'].dt.month == today.month) &
+             (last_year_paid['date'].dt.day <= today.day))
+        ]
+
+        # Also filter current year to YTD
+        current_ytd = paid_items[
+            (paid_items['date'].dt.month < today.month) |
+            ((paid_items['date'].dt.month == today.month) &
+             (paid_items['date'].dt.day <= today.day))
+        ]
+
+        ly_revenue = last_year_ytd['total_price'].sum()
+        cy_revenue = current_ytd['total_price'].sum()
+        ly_qty = last_year_ytd[last_year_ytd['total_qty'] > 0]['total_qty'].sum()
+        cy_qty = current_ytd[current_ytd['total_qty'] > 0]['total_qty'].sum()
+
+        if ly_revenue > 0:
+            sales_change_pct = ((cy_revenue - ly_revenue) / ly_revenue) * 100
+            sales_change_sign = "+" if sales_change_pct >= 0 else ""
+            sales_change_color = "#22c55e" if sales_change_pct >= 0 else "#ef4444"
+        else:
+            sales_change_pct = 0
+            sales_change_sign = ""
+            sales_change_color = "#9ca3af"
+
+        if ly_qty > 0:
+            qty_change_pct = ((cy_qty - ly_qty) / ly_qty) * 100
+            qty_change_sign = "+" if qty_change_pct >= 0 else ""
+            qty_change_color = "#22c55e" if qty_change_pct >= 0 else "#ef4444"
+        else:
+            qty_change_pct = 0
+            qty_change_sign = ""
+            qty_change_color = "#9ca3af"
+
+        st.markdown("<div style='height: 12px'></div>", unsafe_allow_html=True)
+        st.markdown(f"""
+            <div style="display: flex; gap: 24px; flex-wrap: wrap;">
+                <div style="color: #9ca3af; font-size: 14px;">
+                    <span style="color: #6b7280;">YTD vs {last_year}:</span>
+                    <span style="color: {sales_change_color}; font-weight: 600; margin-left: 8px;">
+                        {sales_change_sign}{sales_change_pct:.1f}% Sales
+                    </span>
+                    <span style="color: {qty_change_color}; font-weight: 600; margin-left: 16px;">
+                        {qty_change_sign}{qty_change_pct:.1f}% Units
+                    </span>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    # ===================
+    # THIS WEEK VS LAST WEEK
+    # ===================
+    today = datetime.now()
+    # Get this week's data (Sunday to today)
+    start_of_week = today - timedelta(days=today.weekday() + 1)  # Last Sunday
+    if start_of_week.weekday() != 6:  # Adjust if not Sunday
+        start_of_week = today - timedelta(days=(today.weekday() + 1) % 7)
+
+    this_week_df = paid_items[
+        (paid_items['date'].dt.date >= start_of_week.date()) &
+        (paid_items['date'].dt.date <= today.date())
+    ]
+
+    # Get last week's data (full week, same days)
+    days_into_week = (today - start_of_week).days + 1
+    last_week_start = start_of_week - timedelta(days=7)
+    last_week_end = last_week_start + timedelta(days=days_into_week - 1)
+
+    last_week_df = paid_items[
+        (paid_items['date'].dt.date >= last_week_start.date()) &
+        (paid_items['date'].dt.date <= last_week_end.date())
+    ]
+
+    this_week_sales = this_week_df['total_price'].sum()
+    last_week_sales = last_week_df['total_price'].sum()
+
+    if last_week_sales > 0 and this_week_sales > 0:
+        week_change_pct = ((this_week_sales - last_week_sales) / last_week_sales) * 100
+        week_change_sign = "+" if week_change_pct >= 0 else ""
+        week_change_color = "#22c55e" if week_change_pct >= 0 else "#ef4444"
+
+        st.markdown(f"""
+            <div style="color: #9ca3af; font-size: 14px; margin-top: 4px;">
+                <span style="color: #6b7280;">This Week vs Last:</span>
+                <span style="color: {week_change_color}; font-weight: 600; margin-left: 8px;">
+                    {week_change_sign}{week_change_pct:.1f}%
+                </span>
+                <span style="color: #6b7280; margin-left: 8px;">
+                    (${this_week_sales:,.0f} vs ${last_week_sales:,.0f})
+                </span>
+            </div>
+        """, unsafe_allow_html=True)
+
     render_section_divider()
 
     # ===================
@@ -773,6 +879,57 @@ def render_sales_overview(df):
     fig.update_layout(**layout)
 
     st.plotly_chart(fig, use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ===================
+    # DAY OF WEEK BREAKDOWN
+    # ===================
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    render_card_header("Average Sales by Day of Week")
+
+    # Calculate average sales by day of week
+    dow_data = paid_items.groupby('day_of_week').agg({
+        'total_price': 'sum',
+        'date': lambda x: x.dt.date.nunique()
+    }).reset_index()
+    dow_data.columns = ['day', 'total_sales', 'num_days']
+    dow_data['avg_sales'] = dow_data['total_sales'] / dow_data['num_days']
+
+    # Order days properly
+    day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    dow_data['day'] = pd.Categorical(dow_data['day'], categories=day_order, ordered=True)
+    dow_data = dow_data.sort_values('day')
+
+    # Find the best day
+    best_day = dow_data.loc[dow_data['avg_sales'].idxmax(), 'day']
+
+    # Color bars - highlight weekend and best day
+    bar_colors = []
+    for day in dow_data['day']:
+        if day == best_day:
+            bar_colors.append('#22c55e')  # Green for best day
+        elif day in ['Saturday', 'Sunday']:
+            bar_colors.append('#3b82f6')  # Blue for weekend
+        else:
+            bar_colors.append('#6b7280')  # Gray for weekdays
+
+    fig = go.Figure(go.Bar(
+        x=dow_data['day'],
+        y=dow_data['avg_sales'],
+        marker_color=bar_colors,
+        text=[f"${v:,.0f}" for v in dow_data['avg_sales']],
+        textposition='outside',
+        textfont=dict(color='#9ca3af', size=11),
+        hovertemplate='%{x}: $%{y:,.0f} avg<extra></extra>'
+    ))
+
+    layout = get_chart_layout(250)
+    layout['xaxis']['tickfont'] = dict(size=11, color='#e5e7eb')
+    layout['margin'] = dict(l=10, r=10, t=10, b=40)
+    fig.update_layout(**layout)
+
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption(f"Best day: {best_day}")
     st.markdown('</div>', unsafe_allow_html=True)
 
     # ===================
