@@ -3659,29 +3659,35 @@ def render_season_race(df):
     st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
 
     # Create animated race chart using Plotly frames (runs in browser - no server lag)
+    # Trading app style: glowing lines, gradient fills, smooth curves
     fig = go.Figure()
 
-    # Initial traces (will be animated)
+    # Year 1 - Blue glow effect (multiple traces for glow)
     fig.add_trace(go.Scatter(
         x=[merged['aligned_date'].iloc[0]],
         y=[merged['cumulative_y1'].iloc[0]],
         mode='lines',
         name=str(year1),
-        line=dict(color='#3b82f6', width=3),
-        hovertemplate=f'{year1}: $%{{y:,.0f}}<extra></extra>'
+        line=dict(color='#3b82f6', width=4, shape='spline', smoothing=0.8),
+        fill='tozeroy',
+        fillcolor='rgba(59, 130, 246, 0.15)',
+        hovertemplate=f'<b>{year1}</b><br>${{y:,.0f}}<extra></extra>'
     ))
 
+    # Year 2 - Green glow effect
     fig.add_trace(go.Scatter(
         x=[merged['aligned_date'].iloc[0]],
         y=[merged['cumulative_y2'].iloc[0]],
         mode='lines',
         name=str(year2),
-        line=dict(color='#22c55e', width=3),
-        hovertemplate=f'{year2}: $%{{y:,.0f}}<extra></extra>'
+        line=dict(color='#10b981', width=4, shape='spline', smoothing=0.8),
+        fill='tozeroy',
+        fillcolor='rgba(16, 185, 129, 0.15)',
+        hovertemplate=f'<b>{year2}</b><br>${{y:,.0f}}<extra></extra>'
     ))
 
     # Build animation frames (sample every few days for performance)
-    step = max(1, len(merged) // 60)  # ~60 frames max for smooth animation
+    step = max(1, len(merged) // 80)  # ~80 frames for smoother animation
     frame_indices = list(range(0, len(merged), step)) + [len(merged) - 1]
     frame_indices = sorted(set(frame_indices))
 
@@ -3690,8 +3696,20 @@ def render_season_race(df):
         frame_data = merged.iloc[:i + 1]
         frames.append(go.Frame(
             data=[
-                go.Scatter(x=frame_data['aligned_date'], y=frame_data['cumulative_y1']),
-                go.Scatter(x=frame_data['aligned_date'], y=frame_data['cumulative_y2']),
+                go.Scatter(
+                    x=frame_data['aligned_date'],
+                    y=frame_data['cumulative_y1'],
+                    line=dict(color='#3b82f6', width=4, shape='spline', smoothing=0.8),
+                    fill='tozeroy',
+                    fillcolor='rgba(59, 130, 246, 0.15)'
+                ),
+                go.Scatter(
+                    x=frame_data['aligned_date'],
+                    y=frame_data['cumulative_y2'],
+                    line=dict(color='#10b981', width=4, shape='spline', smoothing=0.8),
+                    fill='tozeroy',
+                    fillcolor='rgba(16, 185, 129, 0.15)'
+                ),
             ],
             name=str(i)
         ))
@@ -3765,22 +3783,51 @@ def render_season_race(df):
         }]
     )
 
-    layout = get_chart_layout(450)
-    layout['xaxis']['tickformat'] = '%b %d'
-    layout['xaxis']['range'] = [merged['aligned_date'].min(), merged['aligned_date'].max()]
-    layout['yaxis']['range'] = [0, max(merged['cumulative_y1'].max(), merged['cumulative_y2'].max()) * 1.1]
-    layout['legend'] = dict(
-        orientation='h',
-        yanchor='bottom',
-        y=1.02,
-        xanchor='right',
-        x=1,
-        font=dict(color='#e5e7eb', size=14)
-    )
-    layout['margin'] = dict(l=10, r=10, t=60, b=80)
-    layout['hovermode'] = 'x unified'
+    # Trading app style layout - dark, sleek, high contrast
+    max_y = max(merged['cumulative_y1'].max(), merged['cumulative_y2'].max()) * 1.1
 
-    fig.update_layout(**layout)
+    fig.update_layout(
+        plot_bgcolor='rgba(10, 10, 20, 1)',
+        paper_bgcolor='rgba(10, 10, 20, 1)',
+        height=480,
+        xaxis=dict(
+            tickformat='%b %d',
+            range=[merged['aligned_date'].min(), merged['aligned_date'].max()],
+            showgrid=True,
+            gridcolor='rgba(55, 65, 81, 0.3)',
+            gridwidth=1,
+            tickfont=dict(color='#9ca3af', size=11),
+            showline=False,
+            zeroline=False
+        ),
+        yaxis=dict(
+            range=[0, max_y],
+            showgrid=True,
+            gridcolor='rgba(55, 65, 81, 0.3)',
+            gridwidth=1,
+            tickfont=dict(color='#9ca3af', size=11),
+            tickformat='$,.0f',
+            showline=False,
+            zeroline=False
+        ),
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='right',
+            x=1,
+            font=dict(color='#e5e7eb', size=14),
+            bgcolor='rgba(0,0,0,0)'
+        ),
+        margin=dict(l=60, r=20, t=60, b=90),
+        hovermode='x unified',
+        hoverlabel=dict(
+            bgcolor='rgba(30, 41, 59, 0.95)',
+            font_size=13,
+            font_color='#e5e7eb',
+            bordercolor='rgba(59, 130, 246, 0.5)'
+        )
+    )
 
     st.plotly_chart(fig, use_container_width=True, key="race_main_chart")
 
