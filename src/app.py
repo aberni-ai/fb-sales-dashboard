@@ -569,6 +569,57 @@ def get_chart_layout(height=350):
     )
 
 
+def style_dataframe_with_changes(df, money_cols=None, pct_cols=None, int_cols=None):
+    """
+    Apply conditional formatting to Change columns and number formatting.
+    Green for positive, red for negative values in Change columns.
+    """
+    if money_cols is None:
+        money_cols = []
+    if pct_cols is None:
+        pct_cols = []
+    if int_cols is None:
+        int_cols = []
+
+    def color_negative_red(val):
+        if pd.isna(val):
+            return ''
+        try:
+            if val > 0:
+                return 'color: #22c55e'  # Green
+            elif val < 0:
+                return 'color: #ef4444'  # Red
+            return ''
+        except:
+            return ''
+
+    # Find change columns
+    change_cols = [col for col in df.columns if 'Change' in str(col)]
+
+    # Build format dict
+    format_dict = {}
+    for col in money_cols:
+        if col in df.columns:
+            format_dict[col] = '${:,.0f}'
+    for col in pct_cols:
+        if col in df.columns:
+            format_dict[col] = '{:.1f}%'
+    for col in int_cols:
+        if col in df.columns:
+            format_dict[col] = '{:,.0f}'
+
+    # Apply styling
+    styled = df.style
+
+    if format_dict:
+        styled = styled.format(format_dict)
+
+    if change_cols:
+        styled = styled.applymap(color_negative_red, subset=[c for c in change_cols if c in df.columns])
+
+    return styled
+
+
 # =============================================================================
 # TAB 1: SALES OVERVIEW
 # =============================================================================
@@ -1087,22 +1138,23 @@ def render_comparison(df):
         pivot_display['Change'] = pivot_display[col2] - pivot_display[col1]
         pivot_display['Change %'] = ((pivot_display[col2] - pivot_display[col1]) / pivot_display[col1].replace(0, float('nan')) * 100).fillna(0)
 
-    # Build column config for proper formatting
-    col_config = {compare_by: st.column_config.TextColumn(compare_by)}
-    for col in year_cols:
-        if metric == "Sales ($)":
-            col_config[col] = st.column_config.NumberColumn(col, format="$%,.0f")
-        else:
-            col_config[col] = st.column_config.NumberColumn(col, format="%,.0f")
+    # Apply conditional formatting with green/red for changes
+    if metric == "Sales ($)":
+        money_cols = year_cols + (['Change'] if 'Change' in pivot_display.columns else [])
+        styled_df = style_dataframe_with_changes(
+            pivot_display,
+            money_cols=money_cols,
+            pct_cols=['Change %'] if 'Change %' in pivot_display.columns else []
+        )
+    else:
+        int_cols = year_cols + (['Change'] if 'Change' in pivot_display.columns else [])
+        styled_df = style_dataframe_with_changes(
+            pivot_display,
+            int_cols=int_cols,
+            pct_cols=['Change %'] if 'Change %' in pivot_display.columns else []
+        )
 
-    if 'Change' in pivot_display.columns:
-        if metric == "Sales ($)":
-            col_config['Change'] = st.column_config.NumberColumn('Change', format="$%,.0f")
-        else:
-            col_config['Change'] = st.column_config.NumberColumn('Change', format="%,.0f")
-        col_config['Change %'] = st.column_config.NumberColumn('Change %', format="%.1f%%")
-
-    st.dataframe(pivot_display, column_config=col_config, use_container_width=True, hide_index=True, height=250)
+    st.dataframe(styled_df, use_container_width=True, hide_index=True, height=250)
     st.markdown('</div>', unsafe_allow_html=True)
 
 
@@ -1743,17 +1795,19 @@ def render_items(df):
             display_cols = base_cols
         display_data = item_data[display_cols].copy()
 
-        # Build column config for YTD comparison (with commas)
-        col_config = {}
-        for col in display_data.columns:
-            if col.startswith('Sales'):
-                col_config[col] = st.column_config.NumberColumn(col, format="$%,.0f")
-            elif col.startswith('Qty'):
-                col_config[col] = st.column_config.NumberColumn(col, format="%,.0f")
-            elif col == 'Change':
-                col_config[col] = st.column_config.NumberColumn('Change', format="$%,.0f")
-            elif col == 'Change %':
-                col_config[col] = st.column_config.NumberColumn('Change %', format="%.1f%%")
+        # Apply conditional formatting with green/red for changes
+        sales_cols = [c for c in display_data.columns if c.startswith('Sales')]
+        qty_cols = [c for c in display_data.columns if c.startswith('Qty')]
+        money_cols = sales_cols + (['Change'] if 'Change' in display_data.columns else [])
+
+        styled_df = style_dataframe_with_changes(
+            display_data,
+            money_cols=money_cols,
+            int_cols=qty_cols,
+            pct_cols=['Change %'] if 'Change %' in display_data.columns else []
+        )
+
+        st.dataframe(styled_df, use_container_width=True, hide_index=True, height=500)
     else:
         # Standard display
         display_data = item_data[['Item', 'Category', 'Subcategory', 'Qty Sold', 'Sales', 'Avg Price']].copy()
@@ -1765,13 +1819,13 @@ def render_items(df):
             'Avg Price': st.column_config.NumberColumn('Avg Price', format="$%.2f"),
         }
 
-    st.dataframe(
-        display_data,
-        column_config=col_config,
-        use_container_width=True,
-        hide_index=True,
-        height=500
-    )
+        st.dataframe(
+            display_data,
+            column_config=col_config,
+            use_container_width=True,
+            hide_index=True,
+            height=500
+        )
 
 
 # =============================================================================
@@ -2408,19 +2462,30 @@ def render_locations():
         excel_buffer.seek(0)
         st.download_button("Export Excel", excel_buffer, "location_sales.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
-    # Build column config for proper sorting with formatted display (with commas)
-    col_config = {}
-    for col in location_summary.columns:
-        if col == 'Location':
-            continue
-        elif col == 'Days':
-            col_config[col] = st.column_config.NumberColumn(col, format="%,d")
-        elif 'Change %' in col:
-            col_config[col] = st.column_config.NumberColumn(col, format="%.1f%%")
-        elif 'Change' in col or 'Sales' in col or 'Avg' in col:
-            col_config[col] = st.column_config.NumberColumn(col, format="$%,.0f")
+    # Display with conditional formatting for Change columns
+    if 'Change' in location_summary.columns:
+        # YTD comparison mode - use styled dataframe
+        sales_cols = [c for c in location_summary.columns if c.startswith('Sales')]
+        money_cols = sales_cols + ['Change']
 
-    st.dataframe(location_summary, column_config=col_config, use_container_width=True, hide_index=True, height=400)
+        styled_df = style_dataframe_with_changes(
+            location_summary,
+            money_cols=money_cols,
+            pct_cols=['Change %'] if 'Change %' in location_summary.columns else []
+        )
+        st.dataframe(styled_df, use_container_width=True, hide_index=True, height=400)
+    else:
+        # Standard view - use column_config
+        col_config = {}
+        for col in location_summary.columns:
+            if col == 'Location':
+                continue
+            elif col == 'Days':
+                col_config[col] = st.column_config.NumberColumn(col, format="%,d")
+            elif 'Sales' in col or 'Avg' in col:
+                col_config[col] = st.column_config.NumberColumn(col, format="$%,.0f")
+
+        st.dataframe(location_summary, column_config=col_config, use_container_width=True, hide_index=True, height=400)
     st.markdown('</div>', unsafe_allow_html=True)
 
 
