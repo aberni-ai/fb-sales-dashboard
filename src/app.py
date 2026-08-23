@@ -2715,6 +2715,19 @@ def render_locations():
 
     cumulative_data = {}
 
+    # Get current year for day-of-week alignment
+    current_year = datetime.now().year
+
+    def get_day_offset(year):
+        """Days to add to align day-of-week with current year (same as filter_ytd_same_dow)."""
+        offset = 0
+        for y in range(year, current_year):
+            if (y % 4 == 0 and y % 100 != 0) or (y % 400 == 0):
+                offset += 2
+            else:
+                offset += 1
+        return offset % 7
+
     for year in trend_years:
         year_data = trend_df[trend_df['year'] == year].copy()
         year_data = year_data.sort_values('date')
@@ -2724,10 +2737,18 @@ def render_locations():
         daily.columns = ['date', 'sales']
         daily['cumulative'] = daily['sales'].cumsum()
 
-        # Create aligned date for x-axis (same month/day, reference year)
-        daily['aligned_date'] = daily['date'].apply(
-            lambda d: datetime(REFERENCE_YEAR, d.month, d.day)
-        )
+        # For past years, apply day offset to align with current year's day-of-week
+        # e.g., 2025 Aug 23 (Sat) aligns with 2026 Aug 22 (Sat) -> subtract 1 day from 2025
+        if year < current_year:
+            offset = get_day_offset(int(year))
+            # Shift the aligned date back by offset days so same DOW aligns
+            daily['aligned_date'] = daily['date'].apply(
+                lambda d: datetime(REFERENCE_YEAR, d.month, d.day) - timedelta(days=offset)
+            )
+        else:
+            daily['aligned_date'] = daily['date'].apply(
+                lambda d: datetime(REFERENCE_YEAR, d.month, d.day)
+            )
 
         cumulative_data[year] = daily
 
