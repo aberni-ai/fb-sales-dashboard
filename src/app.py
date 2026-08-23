@@ -3477,15 +3477,15 @@ def render_season_race(df):
         return
 
     # Compact controls row
-    col1, col2, col3, col4 = st.columns([1.2, 1.8, 0.8, 0.8])
+    col1, col2, col3, col4 = st.columns([1, 2.5, 0.6, 0.6])
 
     with col1:
-        compare_type = st.selectbox("Compare", ["All Sales", "Category", "Location", "Item"], key="race_compare_type", label_visibility="collapsed")
+        compare_type = st.selectbox("Compare", ["All Sales", "Category", "Location", "Items"], key="race_compare_type", label_visibility="collapsed")
 
     with col2:
         if compare_type == "Category":
             categories = sorted([c for c in df['category'].unique() if c and pd.notna(c)])
-            selected_entity = st.selectbox("Category", categories, key="race_category", label_visibility="collapsed")
+            selected_entities = st.multiselect("Categories", categories, default=[categories[0]] if categories else [], key="race_categories", label_visibility="collapsed", placeholder="Select categories...")
         elif compare_type == "Location":
             try:
                 loc_df = read_sql("SELECT DISTINCT location FROM location_sales")
@@ -3493,44 +3493,48 @@ def render_season_race(df):
             except:
                 locations = []
             if locations:
-                selected_entity = st.selectbox("Location", locations, key="race_location", label_visibility="collapsed")
+                selected_entities = st.multiselect("Locations", locations, default=[locations[0]] if locations else [], key="race_locations", label_visibility="collapsed", placeholder="Select locations...")
             else:
                 st.caption("No location data")
-                selected_entity = None
-        elif compare_type == "Item":
+                selected_entities = []
+        elif compare_type == "Items":
             items = sorted([i for i in df['plu_name'].unique() if i and pd.notna(i)])
-            selected_entity = st.selectbox("Item", items, key="race_item", label_visibility="collapsed")
+            selected_entities = st.multiselect("Items", items, default=[], key="race_items", label_visibility="collapsed", placeholder="Search & select items...")
         else:
-            selected_entity = "All"
-            st.caption("All F&B Sales")
+            selected_entities = ["All"]
 
     with col3:
-        year1 = st.selectbox("Y1", [int(y) for y in years[:-1]], index=len(years)-2, key="race_year1", label_visibility="collapsed")
+        year1 = st.selectbox("", [int(y) for y in years[:-1]], index=len(years)-2, key="race_year1", label_visibility="collapsed")
 
     with col4:
         year2_options = [int(y) for y in years if y > year1]
         if year2_options:
-            year2 = st.selectbox("Y2", year2_options, index=len(year2_options)-1, key="race_year2", label_visibility="collapsed")
+            year2 = st.selectbox("", year2_options, index=len(year2_options)-1, key="race_year2", label_visibility="collapsed")
         else:
             year2 = int(years[-1])
-            st.selectbox("Y2", [year2], key="race_year2", label_visibility="collapsed")
+            st.selectbox("", [year2], key="race_year2", label_visibility="collapsed")
+
+    # Validate selection
+    if compare_type != "All Sales" and not selected_entities:
+        st.info(f"Select at least one {compare_type.lower().rstrip('s')} to compare.")
+        return
 
     # Prepare data based on comparison type
-    if compare_type == "Location" and selected_entity:
+    if compare_type == "Location" and selected_entities:
         try:
             loc_data = read_sql("SELECT date, location, gross_sales FROM location_sales")
             loc_data['date'] = pd.to_datetime(loc_data['date'])
             loc_data['year'] = loc_data['date'].dt.year
-            race_df = loc_data[loc_data['location'] == selected_entity].copy()
+            race_df = loc_data[loc_data['location'].isin(selected_entities)].copy()
             value_col = 'gross_sales'
         except:
             st.error("Could not load location data")
             return
-    elif compare_type == "Category" and selected_entity:
-        race_df = df[df['category'] == selected_entity].copy()
+    elif compare_type == "Category" and selected_entities:
+        race_df = df[df['category'].isin(selected_entities)].copy()
         value_col = 'total_price'
-    elif compare_type == "Item" and selected_entity:
-        race_df = df[df['plu_name'] == selected_entity].copy()
+    elif compare_type == "Items" and selected_entities:
+        race_df = df[df['plu_name'].isin(selected_entities)].copy()
         value_col = 'total_price'
     else:
         race_df = df.copy()
