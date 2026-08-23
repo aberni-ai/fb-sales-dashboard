@@ -3669,7 +3669,18 @@ def render_season_race(df):
     # Trading app style: glowing lines, gradient fills, smooth curves
     fig = go.Figure()
 
-    # Year 1 - Blue glow effect (multiple traces for glow)
+    # Trace 0: Year 1 glow (outer glow effect - wider, transparent)
+    fig.add_trace(go.Scatter(
+        x=[merged['aligned_date'].iloc[0]],
+        y=[merged['cumulative_y1'].iloc[0]],
+        mode='lines',
+        name='',
+        line=dict(color='rgba(59, 130, 246, 0.3)', width=12, shape='spline', smoothing=0.8),
+        hoverinfo='skip',
+        showlegend=False
+    ))
+
+    # Trace 1: Year 1 main line
     fig.add_trace(go.Scatter(
         x=[merged['aligned_date'].iloc[0]],
         y=[merged['cumulative_y1'].iloc[0]],
@@ -3677,11 +3688,34 @@ def render_season_race(df):
         name=str(year1),
         line=dict(color='#3b82f6', width=4, shape='spline', smoothing=0.8),
         fill='tozeroy',
-        fillcolor='rgba(59, 130, 246, 0.15)',
+        fillcolor='rgba(59, 130, 246, 0.12)',
         hovertemplate=f'<b>{year1}</b><br>${{y:,.0f}}<extra></extra>'
     ))
 
-    # Year 2 - Green glow effect
+    # Trace 2: Year 1 moving dot head
+    fig.add_trace(go.Scatter(
+        x=[merged['aligned_date'].iloc[0]],
+        y=[merged['cumulative_y1'].iloc[0]],
+        mode='markers',
+        name='',
+        marker=dict(color='#3b82f6', size=14, symbol='circle',
+                   line=dict(color='white', width=2)),
+        hoverinfo='skip',
+        showlegend=False
+    ))
+
+    # Trace 3: Year 2 glow (outer glow effect)
+    fig.add_trace(go.Scatter(
+        x=[merged['aligned_date'].iloc[0]],
+        y=[merged['cumulative_y2'].iloc[0]],
+        mode='lines',
+        name='',
+        line=dict(color='rgba(16, 185, 129, 0.3)', width=12, shape='spline', smoothing=0.8),
+        hoverinfo='skip',
+        showlegend=False
+    ))
+
+    # Trace 4: Year 2 main line
     fig.add_trace(go.Scatter(
         x=[merged['aligned_date'].iloc[0]],
         y=[merged['cumulative_y2'].iloc[0]],
@@ -3689,33 +3723,75 @@ def render_season_race(df):
         name=str(year2),
         line=dict(color='#10b981', width=4, shape='spline', smoothing=0.8),
         fill='tozeroy',
-        fillcolor='rgba(16, 185, 129, 0.15)',
+        fillcolor='rgba(16, 185, 129, 0.12)',
         hovertemplate=f'<b>{year2}</b><br>${{y:,.0f}}<extra></extra>'
     ))
 
-    # Build animation frames (sample every few days for performance)
-    step = max(1, len(merged) // 80)  # ~80 frames for smoother animation
+    # Trace 5: Year 2 moving dot head
+    fig.add_trace(go.Scatter(
+        x=[merged['aligned_date'].iloc[0]],
+        y=[merged['cumulative_y2'].iloc[0]],
+        mode='markers',
+        name='',
+        marker=dict(color='#10b981', size=14, symbol='circle',
+                   line=dict(color='white', width=2)),
+        hoverinfo='skip',
+        showlegend=False
+    ))
+
+    # Build animation frames with glow + moving dots
+    step = max(1, len(merged) // 100)  # ~100 frames for smoother animation
     frame_indices = list(range(0, len(merged), step)) + [len(merged) - 1]
     frame_indices = sorted(set(frame_indices))
 
     frames = []
     for i in frame_indices:
         frame_data = merged.iloc[:i + 1]
+        current_row = merged.iloc[i]
+
         frames.append(go.Frame(
             data=[
+                # Year 1 glow
+                go.Scatter(
+                    x=frame_data['aligned_date'],
+                    y=frame_data['cumulative_y1'],
+                    line=dict(color='rgba(59, 130, 246, 0.3)', width=12, shape='spline', smoothing=0.8)
+                ),
+                # Year 1 main line
                 go.Scatter(
                     x=frame_data['aligned_date'],
                     y=frame_data['cumulative_y1'],
                     line=dict(color='#3b82f6', width=4, shape='spline', smoothing=0.8),
                     fill='tozeroy',
-                    fillcolor='rgba(59, 130, 246, 0.15)'
+                    fillcolor='rgba(59, 130, 246, 0.12)'
                 ),
+                # Year 1 dot head
+                go.Scatter(
+                    x=[current_row['aligned_date']],
+                    y=[current_row['cumulative_y1']],
+                    marker=dict(color='#3b82f6', size=14, symbol='circle',
+                               line=dict(color='white', width=2))
+                ),
+                # Year 2 glow
+                go.Scatter(
+                    x=frame_data['aligned_date'],
+                    y=frame_data['cumulative_y2'],
+                    line=dict(color='rgba(16, 185, 129, 0.3)', width=12, shape='spline', smoothing=0.8)
+                ),
+                # Year 2 main line
                 go.Scatter(
                     x=frame_data['aligned_date'],
                     y=frame_data['cumulative_y2'],
                     line=dict(color='#10b981', width=4, shape='spline', smoothing=0.8),
                     fill='tozeroy',
-                    fillcolor='rgba(16, 185, 129, 0.15)'
+                    fillcolor='rgba(16, 185, 129, 0.12)'
+                ),
+                # Year 2 dot head
+                go.Scatter(
+                    x=[current_row['aligned_date']],
+                    y=[current_row['cumulative_y2']],
+                    marker=dict(color='#10b981', size=14, symbol='circle',
+                               line=dict(color='white', width=2))
                 ),
             ],
             name=str(i)
@@ -3788,9 +3864,9 @@ def render_season_race(df):
                 buttons=[
                     dict(label="▶ Play",
                          method="animate",
-                         args=[None, {"frame": {"duration": 50, "redraw": True},
+                         args=[None, {"frame": {"duration": 30, "redraw": True},
                                      "fromcurrent": True,
-                                     "transition": {"duration": 0}}]),
+                                     "transition": {"duration": 10}}]),
                     dict(label="⏸ Pause",
                          method="animate",
                          args=[[None], {"frame": {"duration": 0, "redraw": False},
@@ -3828,13 +3904,20 @@ def render_season_race(df):
     # Trading app style layout - dark, sleek, high contrast
     max_y = max(merged['cumulative_y1'].max(), merged['cumulative_y2'].max()) * 1.1
 
+    # Extend x-axis to show full season (May 16 through Nov 30)
+    season_start = datetime(REFERENCE_YEAR, 5, 16)
+    season_end = datetime(REFERENCE_YEAR, 11, 30)
+    # Use actual data range if it extends further
+    x_min = min(merged['aligned_date'].min(), season_start)
+    x_max = max(merged['aligned_date'].max(), season_end) if len(merged) > 0 else season_end
+
     fig.update_layout(
         plot_bgcolor='rgba(10, 10, 20, 1)',
         paper_bgcolor='rgba(10, 10, 20, 1)',
         height=480,
         xaxis=dict(
             tickformat='%b %d',
-            range=[merged['aligned_date'].min(), merged['aligned_date'].max()],
+            range=[x_min, x_max],
             showgrid=True,
             gridcolor='rgba(55, 65, 81, 0.3)',
             gridwidth=1,
