@@ -841,57 +841,64 @@ def render_comparison(df):
 
     # Create summary by year
     year_totals = comparison_data.groupby('Year')[metric_label].sum()
+    year_list_sorted = sorted(year_totals.keys())
 
-    kpi_cols = st.columns(len(year_totals) + 1)
+    # Show year comparison KPIs if exactly 2 years
+    if len(year_list_sorted) == 2:
+        year1, year2 = year_list_sorted
+        val1, val2 = year_totals[year1], year_totals[year2]
+        change_val = val2 - val1
+        change_pct = ((val2 - val1) / val1 * 100) if val1 > 0 else 0
+        change_sign = "+" if change_val >= 0 else ""
+        change_color = "#22c55e" if change_val >= 0 else "#ef4444"
 
-    # Total across all years
-    with kpi_cols[0]:
-        total_val = year_totals.sum()
-        if metric == "Sales ($)":
-            formatted_val = f"${total_val:,.0f}"
-        else:
-            formatted_val = f"{int(total_val):,}"
-        st.markdown(f"""
-            <div style="border: 1px solid #374151; border-radius: 8px; padding: 16px 20px;">
-                <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">Total {metric_label}</div>
-                <div style="color: white; font-size: 28px; font-weight: 600;">{formatted_val}</div>
-            </div>
-        """, unsafe_allow_html=True)
+        kpi_cols = st.columns(4)
 
-    # Per-year totals
-    for idx, (year, total) in enumerate(year_totals.items()):
-        with kpi_cols[idx + 1]:
+        with kpi_cols[0]:
             if metric == "Sales ($)":
-                formatted_val = f"${total:,.0f}"
+                formatted_val = f"${val1:,.0f}"
             else:
-                formatted_val = f"{int(total):,}"
+                formatted_val = f"{int(val1):,}"
+            render_kpi_card(f"{int(year1)} {metric_label}", formatted_val)
 
-            # Calculate YoY change if possible
-            year_list_sorted = sorted(year_totals.keys())
-            if len(year_list_sorted) > 1 and year != min(year_list_sorted):
-                prev_year = year - 1
-                if prev_year in year_totals:
-                    prev_val = year_totals[prev_year]
-                    if prev_val > 0:
-                        pct_change = ((total - prev_val) / prev_val) * 100
-                        change_color = "#22c55e" if pct_change >= 0 else "#ef4444"
-                        change_str = f'<div style="color: {change_color}; font-size: 13px; margin-top: 4px;">{"+" if pct_change >= 0 else ""}{pct_change:.1f}% vs {prev_year}</div>'
-                    else:
-                        change_str = ""
-                else:
-                    change_str = ""
+        with kpi_cols[1]:
+            if metric == "Sales ($)":
+                formatted_val = f"${val2:,.0f}"
             else:
-                change_str = ""
+                formatted_val = f"{int(val2):,}"
+            render_kpi_card(f"{int(year2)} {metric_label}", formatted_val)
 
+        with kpi_cols[2]:
+            if metric == "Sales ($)":
+                change_formatted = f"{change_sign}${change_val:,.0f}"
+            else:
+                change_formatted = f"{change_sign}{int(change_val):,}"
             st.markdown(f"""
-                <div style="border: 1px solid #374151; border-radius: 8px; padding: 16px 20px;">
-                    <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">{year} {metric_label}</div>
-                    <div style="color: white; font-size: 28px; font-weight: 600;">{formatted_val}</div>
-                    {change_str}
+                <div class="kpi-card">
+                    <div class="kpi-label">$ Change</div>
+                    <div style="color: {change_color}; font-size: 32px; font-weight: 600;">{change_formatted}</div>
                 </div>
             """, unsafe_allow_html=True)
 
-    st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
+        with kpi_cols[3]:
+            st.markdown(f"""
+                <div class="kpi-card">
+                    <div class="kpi-label">% Change</div>
+                    <div style="color: {change_color}; font-size: 32px; font-weight: 600;">{change_sign}{change_pct:.1f}%</div>
+                </div>
+            """, unsafe_allow_html=True)
+    else:
+        # Single year or more than 2 years - show totals
+        kpi_cols = st.columns(len(year_totals))
+        for idx, (year, total) in enumerate(year_totals.items()):
+            with kpi_cols[idx]:
+                if metric == "Sales ($)":
+                    formatted_val = f"${total:,.0f}"
+                else:
+                    formatted_val = f"{int(total):,}"
+                render_kpi_card(f"{int(year)} {metric_label}", formatted_val)
+
+    render_section_divider()
 
     # Bar chart comparison
     st.markdown('<div class="card">', unsafe_allow_html=True)
