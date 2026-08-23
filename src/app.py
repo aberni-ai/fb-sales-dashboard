@@ -3470,6 +3470,13 @@ def render_season_race(df):
         </style>
     """, unsafe_allow_html=True)
 
+    st.markdown("""
+        <div class="section-header">
+            <div class="section-title">Season Race</div>
+            <div class="section-subtitle">Watch the season unfold with animated YoY comparison</div>
+        </div>
+    """, unsafe_allow_html=True)
+
     # Get available years
     years = sorted(df['year'].dropna().unique())
     if len(years) < 2:
@@ -3867,11 +3874,11 @@ def render_season_race(df):
     st.plotly_chart(fig, use_container_width=True, key="race_main_chart")
 
     # Insights section - split by pre/post July 1
-    st.markdown("<div style='height: 12px'></div>", unsafe_allow_html=True)
+    render_section_divider()
 
     # Post-July stats (meaningful sample size)
     if len(post_july) > 0:
-        st.markdown('<p style="color: #6b7280; font-size: 12px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Season Performance (After Jul 1)</p>', unsafe_allow_html=True)
+        render_card_header("Season Performance (After Jul 1)")
 
         post_july_lead = post_july['pct_diff'].max()
         post_july_gap = post_july['pct_diff'].min()
@@ -3889,8 +3896,8 @@ def render_season_race(df):
             render_kpi_card("Max Daily Swing", f"{post_july_swing:.1f}%")
 
     # Key momentum shifts table
-    st.markdown("<div style='height: 16px'></div>", unsafe_allow_html=True)
-    st.markdown('<p style="color: #6b7280; font-size: 12px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Key Momentum Shifts</p>', unsafe_allow_html=True)
+    render_section_divider()
+    render_card_header("Key Momentum Shifts")
 
     # Find significant momentum shifts (top 5 biggest daily swings)
     significant_swings = merged.nlargest(5, 'abs_swing').copy()
