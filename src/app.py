@@ -3673,51 +3673,43 @@ def render_season_race(df):
             """, unsafe_allow_html=True)
 
     # ========================================
-    # TALE OF THE TAPE (Boxing-style comparison)
+    # TALE OF THE TAPE (Compact inline comparison)
     # ========================================
-    st.markdown("<div style='height: 16px'></div>", unsafe_allow_html=True)
-
-    tape_col1, tape_col2, tape_col3 = st.columns([2, 1, 2])
-
-    # Calculate comparison stats
     avg_daily_y1 = merged['sales_y1'].mean()
     avg_daily_y2 = merged['sales_y2'].mean()
     best_day_y1 = merged['sales_y1'].max()
     best_day_y2 = merged['sales_y2'].max()
     days_winning_y2 = (merged['sales_y2'] > merged['sales_y1']).sum()
     days_winning_y1 = (merged['sales_y1'] > merged['sales_y2']).sum()
-    total_days = len(merged)
 
-    with tape_col1:
-        st.markdown(f"""
-            <div style="text-align: right;">
-                <div style="color: #3b82f6; font-size: 28px; font-weight: 700;">{year1}</div>
-                <div style="color: #e5e7eb; font-size: 16px; margin-top: 12px;">${avg_daily_y1:,.0f}</div>
-                <div style="color: #e5e7eb; font-size: 16px; margin-top: 8px;">${best_day_y1:,.0f}</div>
-                <div style="color: #e5e7eb; font-size: 16px; margin-top: 8px;">{days_winning_y1}</div>
+    st.markdown(f"""
+        <div style="display: flex; justify-content: center; gap: 32px; margin: 12px 0 16px 0; flex-wrap: wrap;">
+            <div style="text-align: center;">
+                <div style="color: #6b7280; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Avg Daily</div>
+                <div style="margin-top: 4px;">
+                    <span style="color: #3b82f6; font-size: 14px; font-weight: 600;">${avg_daily_y1:,.0f}</span>
+                    <span style="color: #4b5563; margin: 0 6px;">vs</span>
+                    <span style="color: #10b981; font-size: 14px; font-weight: 600;">${avg_daily_y2:,.0f}</span>
+                </div>
             </div>
-        """, unsafe_allow_html=True)
-
-    with tape_col2:
-        st.markdown(f"""
-            <div style="text-align: center; color: #6b7280; font-size: 11px; text-transform: uppercase;">
-                <div style="margin-top: 40px;">Avg Daily</div>
-                <div style="margin-top: 16px;">Best Day</div>
-                <div style="margin-top: 16px;">Days Won</div>
+            <div style="text-align: center;">
+                <div style="color: #6b7280; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Best Day</div>
+                <div style="margin-top: 4px;">
+                    <span style="color: #3b82f6; font-size: 14px; font-weight: 600;">${best_day_y1:,.0f}</span>
+                    <span style="color: #4b5563; margin: 0 6px;">vs</span>
+                    <span style="color: #10b981; font-size: 14px; font-weight: 600;">${best_day_y2:,.0f}</span>
+                </div>
             </div>
-        """, unsafe_allow_html=True)
-
-    with tape_col3:
-        st.markdown(f"""
-            <div style="text-align: left;">
-                <div style="color: #10b981; font-size: 28px; font-weight: 700;">{year2}</div>
-                <div style="color: #e5e7eb; font-size: 16px; margin-top: 12px;">${avg_daily_y2:,.0f}</div>
-                <div style="color: #e5e7eb; font-size: 16px; margin-top: 8px;">${best_day_y2:,.0f}</div>
-                <div style="color: #e5e7eb; font-size: 16px; margin-top: 8px;">{days_winning_y2}</div>
+            <div style="text-align: center;">
+                <div style="color: #6b7280; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Days Won</div>
+                <div style="margin-top: 4px;">
+                    <span style="color: #3b82f6; font-size: 14px; font-weight: 600;">{days_winning_y1}</span>
+                    <span style="color: #4b5563; margin: 0 6px;">vs</span>
+                    <span style="color: #10b981; font-size: 14px; font-weight: 600;">{days_winning_y2}</span>
+                </div>
             </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
+        </div>
+    """, unsafe_allow_html=True)
 
     # Create animated race chart using Plotly frames (runs in browser - no server lag)
     # Trading app style: glowing lines, gradient fills, smooth curves
