@@ -2677,6 +2677,155 @@ def render_locations():
         st.dataframe(location_summary, column_config=col_config, use_container_width=True, hide_index=True, height=400)
     st.markdown('</div>', unsafe_allow_html=True)
 
+    render_section_divider()
+
+    # ===================
+    # LOCATION CUMULATIVE TREND
+    # ===================
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    render_card_header("Location Season Trend")
+
+    # Get list of locations
+    locations = sorted(loc_df['location'].unique())
+
+    # Location selector
+    col1, col2 = st.columns([2, 3])
+    with col1:
+        selected_location = st.selectbox("Select Location", ["All Locations"] + locations, key="loc_trend_select")
+
+    # Filter data for selected location
+    if selected_location == "All Locations":
+        trend_df = loc_df.groupby(['date', 'year'])['gross_sales'].sum().reset_index()
+    else:
+        trend_df = loc_df[loc_df['location'] == selected_location].copy()
+
+    # Get years in the data
+    trend_years = sorted(trend_df['year'].unique())
+
+    # Create cumulative data for each year
+    fig = go.Figure()
+
+    # Reference year for alignment (use 2000 so all years align on same x-axis)
+    REFERENCE_YEAR = 2000
+
+    year_colors = {
+        trend_years[0] if len(trend_years) > 0 else 2025: '#3b82f6',  # Blue
+        trend_years[1] if len(trend_years) > 1 else 2026: '#22c55e',  # Green
+    }
+
+    cumulative_data = {}
+
+    for year in trend_years:
+        year_data = trend_df[trend_df['year'] == year].copy()
+        year_data = year_data.sort_values('date')
+
+        # Aggregate by date
+        daily = year_data.groupby(year_data['date'].dt.date)['gross_sales'].sum().reset_index()
+        daily.columns = ['date', 'sales']
+        daily['cumulative'] = daily['sales'].cumsum()
+
+        # Create aligned date for x-axis (same month/day, reference year)
+        daily['aligned_date'] = daily['date'].apply(
+            lambda d: datetime(REFERENCE_YEAR, d.month, d.day)
+        )
+
+        cumulative_data[year] = daily
+
+        color = year_colors.get(year, '#9ca3af')
+
+        fig.add_trace(go.Scatter(
+            x=daily['aligned_date'],
+            y=daily['cumulative'],
+            mode='lines',
+            name=str(int(year)),
+            line=dict(color=color, width=2.5),
+            hovertemplate=f'{int(year)}: $%{{y:,.0f}}<extra></extra>'
+        ))
+
+    # If we have exactly 2 years, find and annotate the largest discrepancies
+    if len(trend_years) == 2:
+        year1, year2 = trend_years[0], trend_years[1]
+        df1 = cumulative_data[year1].set_index('aligned_date')
+        df2 = cumulative_data[year2].set_index('aligned_date')
+
+        # Join on aligned date
+        merged = df1[['cumulative']].join(df2[['cumulative']], lsuffix='_y1', rsuffix='_y2', how='inner')
+
+        if len(merged) > 0:
+            # Calculate % difference at each point
+            merged['pct_diff'] = ((merged['cumulative_y2'] - merged['cumulative_y1']) / merged['cumulative_y1'] * 100).fillna(0)
+
+            # Find max positive and negative discrepancy
+            max_pos_idx = merged['pct_diff'].idxmax()
+            max_neg_idx = merged['pct_diff'].idxmin()
+
+            max_pos_pct = merged.loc[max_pos_idx, 'pct_diff']
+            max_neg_pct = merged.loc[max_neg_idx, 'pct_diff']
+
+            # Add annotations for these points
+            if max_pos_pct > 0:
+                fig.add_annotation(
+                    x=max_pos_idx,
+                    y=merged.loc[max_pos_idx, 'cumulative_y2'],
+                    text=f"+{max_pos_pct:.1f}%",
+                    showarrow=True,
+                    arrowhead=2,
+                    arrowsize=1,
+                    arrowcolor='#22c55e',
+                    font=dict(color='#22c55e', size=12, weight='bold'),
+                    bgcolor='rgba(34, 197, 94, 0.1)',
+                    bordercolor='#22c55e',
+                    borderwidth=1,
+                    borderpad=4
+                )
+
+            if max_neg_pct < 0:
+                fig.add_annotation(
+                    x=max_neg_idx,
+                    y=merged.loc[max_neg_idx, 'cumulative_y2'],
+                    text=f"{max_neg_pct:.1f}%",
+                    showarrow=True,
+                    arrowhead=2,
+                    arrowsize=1,
+                    arrowcolor='#ef4444',
+                    font=dict(color='#ef4444', size=12, weight='bold'),
+                    bgcolor='rgba(239, 68, 68, 0.1)',
+                    bordercolor='#ef4444',
+                    borderwidth=1,
+                    borderpad=4
+                )
+
+    layout = get_chart_layout(350)
+    layout['xaxis']['tickformat'] = '%b %d'
+    layout['legend'] = dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1, font=dict(color='#e5e7eb', size=13))
+    layout['margin'] = dict(l=10, r=10, t=40, b=30)
+    layout['hovermode'] = 'x unified'
+    fig.update_layout(**layout)
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Show summary for 2-year comparison
+    if len(trend_years) == 2 and len(merged) > 0:
+        final_y1 = merged['cumulative_y1'].iloc[-1]
+        final_y2 = merged['cumulative_y2'].iloc[-1]
+        final_diff = ((final_y2 - final_y1) / final_y1 * 100) if final_y1 > 0 else 0
+        diff_color = "#22c55e" if final_diff >= 0 else "#ef4444"
+        diff_sign = "+" if final_diff >= 0 else ""
+
+        st.markdown(f"""
+            <div style="color: #9ca3af; font-size: 14px; margin-top: 8px;">
+                <span style="color: #6b7280;">Current YTD:</span>
+                <span style="color: {diff_color}; font-weight: 600; margin-left: 8px;">
+                    {diff_sign}{final_diff:.1f}% vs {int(year1)}
+                </span>
+                <span style="color: #6b7280; margin-left: 16px;">
+                    (Max gain: +{max_pos_pct:.1f}% · Max gap: {max_neg_pct:.1f}%)
+                </span>
+            </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
 
 def process_location_uploads(uploaded_files):
     """Process uploaded location files."""
