@@ -2606,25 +2606,74 @@ def main():
     # Check if adjustment is configured (non-zero value set by admin)
     adj_pct_configured = st.session_state.attendance_adj_pct != 0
 
-    # Header layout: always show attendance toggle if configured, admin gets more controls
-    header_col1, header_col2, header_col3 = st.columns([3.2, 1.3, 1])
+    # Header layout
+    header_col1, header_col2 = st.columns([4, 1])
 
-    # Render toggle FIRST so we know the current state for the badge
+    # Render controls column FIRST to get toggle state
     with header_col2:
-        st.markdown("<div style='height: 16px'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 12px'></div>", unsafe_allow_html=True)
 
-        # Show toggle directly in header if adjustment is configured (visible to all users)
+        # Show styled toggle widget if adjustment is configured (visible to all users)
         if adj_pct_configured:
-            # Toggle visible directly in header for all users
+            # Styled widget container for the toggle
             enabled = st.toggle(
-                "Att. Adjusted",
+                "Attendance Adjusted",
                 value=st.session_state.get('attendance_adj_enabled', False),
                 key="att_adj_toggle_global",
                 help="Adjust prior year data to account for attendance differences"
             )
             st.session_state.attendance_adj_enabled = enabled
+
+            # Admin config button (inline, small)
+            if admin_mode:
+                with st.popover("Config", use_container_width=True):
+                    st.markdown("**Set Adjustment % (Admin Only)**")
+                    adj_pct = st.slider(
+                        "Attendance Change %",
+                        min_value=-50,
+                        max_value=50,
+                        value=int(st.session_state.get('attendance_adj_pct', 0)),
+                        step=1,
+                        help="Negative = attendance down",
+                        key="att_adj_slider"
+                    )
+
+                    if adj_pct != st.session_state.attendance_adj_pct:
+                        st.session_state.attendance_adj_pct = adj_pct
+                        save_attendance_adjustment_pct(adj_pct)
+                        st.success("Saved!")
+
+                    if adj_pct != 0:
+                        direction = "down" if adj_pct < 0 else "up"
+                        factor = 1 + (adj_pct / 100)
+                        st.caption(f"Attendance {direction} {abs(adj_pct)}% → prior year x{factor:.2f}")
         else:
             enabled = False
+            # Admin setup button when not configured
+            if admin_mode:
+                with st.popover("Setup Attendance Adj.", use_container_width=True):
+                    st.markdown("**Attendance Adjustment Setup**")
+                    st.caption("Normalize comparisons for attendance differences")
+
+                    adj_pct = st.slider(
+                        "Attendance Change %",
+                        min_value=-50,
+                        max_value=50,
+                        value=0,
+                        step=1,
+                        help="Negative = attendance down (e.g., -10 for 10% down)",
+                        key="att_adj_slider_setup"
+                    )
+
+                    if st.button("Save & Enable Toggle", type="primary", use_container_width=True):
+                        st.session_state.attendance_adj_pct = adj_pct
+                        save_attendance_adjustment_pct(adj_pct)
+                        st.success("Saved! Refresh to see toggle.")
+                        st.rerun()
+
+        # Upload button below the toggle
+        with st.popover("Upload Data", use_container_width=True):
+            render_upload_compact()
 
     # Now render header with badge based on current toggle state
     with header_col1:
@@ -2632,7 +2681,7 @@ def main():
 
         # Show attendance adjustment indicator if toggle is ON
         adj_active = enabled and st.session_state.get('attendance_adj_pct', 0) != 0
-        norm_indicator = '<span style="background: rgba(234, 179, 8, 0.2); color: #eab308; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-left: 12px;">ATT. ADJUSTED</span>' if adj_active else ''
+        norm_indicator = '<span style="background: rgba(234, 179, 8, 0.2); color: #eab308; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-left: 12px;">ATTENDANCE ADJUSTED</span>' if adj_active else ''
 
         st.markdown(f"""
             <div class="dash-header">
@@ -2643,60 +2692,6 @@ def main():
                 <div class="dash-subtitle">Food & Beverage Sales Dashboard{last_updated_text}</div>
             </div>
         """, unsafe_allow_html=True)
-
-    # Continue with header_col2 for admin config (toggle already rendered above)
-    with header_col2:
-        # Admin-only: small button to configure the percentage
-        if adj_pct_configured and admin_mode:
-            with st.popover("Config", use_container_width=True):
-                st.markdown("**Set Adjustment % (Admin Only)**")
-                adj_pct = st.slider(
-                    "Attendance Change %",
-                    min_value=-50,
-                    max_value=50,
-                    value=int(st.session_state.get('attendance_adj_pct', 0)),
-                    step=1,
-                    help="Negative = attendance down",
-                    key="att_adj_slider"
-                )
-
-                if adj_pct != st.session_state.attendance_adj_pct:
-                    st.session_state.attendance_adj_pct = adj_pct
-                    save_attendance_adjustment_pct(adj_pct)
-                    st.success("Saved!")
-
-                if adj_pct != 0:
-                    direction = "down" if adj_pct < 0 else "up"
-                    factor = 1 + (adj_pct / 100)
-                    st.caption(f"Att. {direction} {abs(adj_pct)}% → prior year x{factor:.2f}")
-
-        elif admin_mode:
-            # Admin but no adjustment configured yet - show setup button
-            with st.popover("Att. Setup", use_container_width=True):
-                st.markdown("**Attendance Adjustment Setup**")
-                st.caption("Normalize comparisons for attendance differences")
-
-                adj_pct = st.slider(
-                    "Attendance Change %",
-                    min_value=-50,
-                    max_value=50,
-                    value=0,
-                    step=1,
-                    help="Negative = attendance down (e.g., -10 for 10% down)",
-                    key="att_adj_slider_setup"
-                )
-
-                if st.button("Save & Enable Toggle", type="primary", use_container_width=True):
-                    st.session_state.attendance_adj_pct = adj_pct
-                    save_attendance_adjustment_pct(adj_pct)
-                    st.success("Saved! Refresh to see toggle.")
-                    st.rerun()
-
-
-    with header_col3:
-        st.markdown("<div style='height: 16px'></div>", unsafe_allow_html=True)
-        with st.popover("Upload", use_container_width=True):
-            render_upload_compact()
 
     df = load_sales_data()
 
