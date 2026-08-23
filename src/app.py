@@ -4056,63 +4056,35 @@ def render_season_race(df):
     st.plotly_chart(fig, use_container_width=True, key="race_main_chart")
 
     # ========================================
-    # TOP PERFORMERS PANEL (horizontal layout)
+    # TOP PERFORMERS PANEL - Locations Only
     # ========================================
     render_section_divider()
-    render_card_header("🏆 Top Performers YoY")
+    render_card_header("📍 Top Locations YoY")
 
-    perf_col1, perf_col2 = st.columns(2)
+    try:
+        loc_data = read_sql("SELECT date, location, gross_sales FROM location_sales")
+        loc_data['date'] = pd.to_datetime(loc_data['date'])
+        loc_data['year'] = loc_data['date'].dt.year
+        loc_y1 = loc_data[loc_data['year'] == year1].groupby('location')['gross_sales'].sum()
+        loc_y2 = loc_data[loc_data['year'] == year2].groupby('location')['gross_sales'].sum()
+        loc_yoy = ((loc_y2 - loc_y1) / loc_y1 * 100).dropna()
+        loc_yoy = loc_yoy[loc_y1 > 1000]  # Minimum threshold
+        top_locs = loc_yoy.nlargest(5)
 
-    with perf_col1:
-        # Top Items by YoY %
-        st.markdown('<div style="color: #10b981; font-size: 12px; font-weight: 600; margin-bottom: 8px;">📈 Top Items</div>', unsafe_allow_html=True)
-        try:
-            item_y1 = df[df['year'] == year1].groupby('plu_name')['total_price'].sum()
-            item_y2 = df[df['year'] == year2].groupby('plu_name')['total_price'].sum()
-            item_yoy = ((item_y2 - item_y1) / item_y1 * 100).dropna()
-            item_yoy = item_yoy[item_y1 > 1000]  # Minimum threshold
-            top_items = item_yoy.nlargest(5)
-
-            for item_name, pct in top_items.items():
-                display_name = item_name[:25] + "..." if len(str(item_name)) > 25 else item_name
+        loc_cols = st.columns(5)
+        for i, (loc_name, pct) in enumerate(top_locs.items()):
+            with loc_cols[i]:
+                display_name = loc_name[:20] + "..." if len(str(loc_name)) > 20 else loc_name
                 color = "#22c55e" if pct > 0 else "#ef4444"
                 sign = "+" if pct > 0 else ""
                 st.markdown(f"""
-                    <div style="display: flex; justify-content: space-between; padding: 6px 12px; margin-bottom: 4px;
-                                background: rgba(30, 41, 59, 0.4); border-radius: 6px;">
-                        <span style="color: #e5e7eb; font-size: 12px;">{display_name}</span>
-                        <span style="color: {color}; font-size: 12px; font-weight: 600;">{sign}{pct:.0f}%</span>
+                    <div style="background: rgba(30, 41, 59, 0.4); border-radius: 8px; padding: 12px; text-align: center;">
+                        <div style="color: #9ca3af; font-size: 11px; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{display_name}</div>
+                        <div style="color: {color}; font-size: 18px; font-weight: 700;">{sign}{pct:.0f}%</div>
                     </div>
                 """, unsafe_allow_html=True)
-        except:
-            st.caption("No item data available")
-
-    with perf_col2:
-        # Top Locations by YoY %
-        st.markdown('<div style="color: #3b82f6; font-size: 12px; font-weight: 600; margin-bottom: 8px;">📍 Top Locations</div>', unsafe_allow_html=True)
-        try:
-            loc_data = read_sql("SELECT date, location, gross_sales FROM location_sales")
-            loc_data['date'] = pd.to_datetime(loc_data['date'])
-            loc_data['year'] = loc_data['date'].dt.year
-            loc_y1 = loc_data[loc_data['year'] == year1].groupby('location')['gross_sales'].sum()
-            loc_y2 = loc_data[loc_data['year'] == year2].groupby('location')['gross_sales'].sum()
-            loc_yoy = ((loc_y2 - loc_y1) / loc_y1 * 100).dropna()
-            loc_yoy = loc_yoy[loc_y1 > 1000]  # Minimum threshold
-            top_locs = loc_yoy.nlargest(5)
-
-            for loc_name, pct in top_locs.items():
-                display_name = loc_name[:25] + "..." if len(str(loc_name)) > 25 else loc_name
-                color = "#22c55e" if pct > 0 else "#ef4444"
-                sign = "+" if pct > 0 else ""
-                st.markdown(f"""
-                    <div style="display: flex; justify-content: space-between; padding: 6px 12px; margin-bottom: 4px;
-                                background: rgba(30, 41, 59, 0.4); border-radius: 6px;">
-                        <span style="color: #e5e7eb; font-size: 12px;">{display_name}</span>
-                        <span style="color: {color}; font-size: 12px; font-weight: 600;">{sign}{pct:.0f}%</span>
-                    </div>
-                """, unsafe_allow_html=True)
-        except:
-            st.caption("No location data available")
+    except:
+        st.caption("No location data available")
 
     # Insights section - split by pre/post July 1
     render_section_divider()
