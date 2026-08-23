@@ -460,6 +460,31 @@ def load_model():
 # HELPER FUNCTIONS
 # =============================================================================
 
+def filter_ytd_by_week(df, date_col='date'):
+    """
+    Filter dataframe to YTD based on week number and day of week.
+    This ensures apples-to-apples comparison (Saturday to Saturday, etc.)
+    """
+    today = datetime.now()
+    current_week = today.isocalendar()[1]  # ISO week number
+    current_dow = today.weekday()  # 0=Monday, 6=Sunday
+
+    # Add week and day of week columns if not present
+    df = df.copy()
+    df['_week'] = df[date_col].dt.isocalendar().week
+    df['_dow'] = df[date_col].dt.weekday
+
+    # Filter: include all weeks before current, OR same week with day <= current day
+    filtered = df[
+        (df['_week'] < current_week) |
+        ((df['_week'] == current_week) & (df['_dow'] <= current_dow))
+    ]
+
+    # Clean up temp columns
+    filtered = filtered.drop(columns=['_week', '_dow'])
+    return filtered
+
+
 def format_currency(value):
     """Format as currency."""
     if abs(value) >= 1000000:
@@ -807,10 +832,8 @@ def render_comparison(df):
 
     # Apply date range filter
     if date_range == "Year to Date":
-        filtered_df = filtered_df[
-            (filtered_df['month'] < current_month) |
-            ((filtered_df['month'] == current_month) & (filtered_df['day_of_month'] <= current_day))
-        ]
+        # Filter to YTD by week number and day of week for apples-to-apples comparison
+        filtered_df = filter_ytd_by_week(filtered_df)
     elif date_range == "Custom Range":
         filtered_df = filtered_df[
             (filtered_df['date'].dt.date >= start_date) &
@@ -1548,15 +1571,12 @@ def render_items(df):
 
     # Date range filtering
     if date_range == 'Year to Date':
-        # Filter to selected years, but only up to current month/day
+        # Filter to selected years, using week-based comparison (Saturday to Saturday)
         if ytd_years:
             year_list = [int(y) for y in ytd_years]
             filtered = filtered[filtered['year'].isin(year_list)]
-            # Filter to YTD (month <= current month, and if same month, day <= current day)
-            filtered = filtered[
-                (filtered['month'] < current_month) |
-                ((filtered['month'] == current_month) & (filtered['day_of_month'] <= current_day))
-            ]
+            # Filter to YTD by week number and day of week for apples-to-apples comparison
+            filtered = filter_ytd_by_week(filtered)
     elif date_range == 'Custom Range':
         # Show date inputs for custom range
         col_start, col_end = st.columns(2)
@@ -2249,15 +2269,12 @@ def render_locations():
     ytd_comparison_mode = date_range == 'Year to Date' and len(selected_years) > 1
 
     if date_range == 'Year to Date':
-        # Filter to selected years
+        # Filter to selected years, using week-based comparison (Saturday to Saturday)
         if selected_years:
             year_list = [int(y) for y in selected_years]
             filtered_df = filtered_df[filtered_df['year'].isin(year_list)]
-        # Filter to YTD (up to current month/day)
-        filtered_df = filtered_df[
-            (filtered_df['month'] < current_month) |
-            ((filtered_df['month'] == current_month) & (filtered_df['date'].dt.day <= current_day))
-        ]
+        # Filter to YTD by week number and day of week for apples-to-apples comparison
+        filtered_df = filter_ytd_by_week(filtered_df)
     else:
         # Year filter for non-YTD modes
         if selected_year != 'All Years':
