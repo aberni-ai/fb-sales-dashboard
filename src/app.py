@@ -3563,9 +3563,9 @@ def render_season_race(df):
     daily_y1['date'] = pd.to_datetime(daily_y1['date'])
     daily_y2['date'] = pd.to_datetime(daily_y2['date'])
 
-    # Filter to May 1st onwards (season start)
-    daily_y1 = daily_y1[daily_y1['date'].dt.month >= 5]
-    daily_y2 = daily_y2[daily_y2['date'].dt.month >= 5]
+    # Filter to May 16th onwards (opening day)
+    daily_y1 = daily_y1[(daily_y1['date'].dt.month > 5) | ((daily_y1['date'].dt.month == 5) & (daily_y1['date'].dt.day >= 16))]
+    daily_y2 = daily_y2[(daily_y2['date'].dt.month > 5) | ((daily_y2['date'].dt.month == 5) & (daily_y2['date'].dt.day >= 16))]
 
     daily_y1 = daily_y1.sort_values('date')
     daily_y2 = daily_y2.sort_values('date')
@@ -3604,9 +3604,9 @@ def render_season_race(df):
         suffixes=('_y1', '_y2')
     ).sort_values('aligned_date')
 
-    # Filter to start from May 1st
-    may_1st = datetime(REFERENCE_YEAR, 5, 1)
-    merged = merged[merged['aligned_date'] >= may_1st].reset_index(drop=True)
+    # Filter to start from May 16th (opening day)
+    may_16th = datetime(REFERENCE_YEAR, 5, 16)
+    merged = merged[merged['aligned_date'] >= may_16th].reset_index(drop=True)
 
     if len(merged) == 0:
         st.warning("No overlapping dates between the two years.")
@@ -3617,208 +3617,92 @@ def render_season_race(df):
     merged['pct_diff'] = ((merged['cumulative_y2'] - merged['cumulative_y1']) / merged['cumulative_y1'] * 100).fillna(0)
     merged['pct_diff_change'] = merged['pct_diff'].diff().fillna(0)  # Momentum
 
-    # Find key moments - only the top 3 biggest momentum swings (not every small change)
-    # Use percentile-based threshold to only flag truly significant shifts
-    swing_threshold = merged['pct_diff_change'].abs().quantile(0.95)  # Top 5% of swings
-    merged['is_deviation'] = abs(merged['pct_diff_change']) >= max(swing_threshold, 5)  # At least 5% swing
+    # Get final values for summary display
+    final_row = merged.iloc[-1]
+    final_y1 = final_row['cumulative_y1']
+    final_y2 = final_row['cumulative_y2']
+    final_diff = final_row['diff']
+    final_pct = final_row['pct_diff']
 
-    # Initialize session state BEFORE controls
-    if 'race_frame' not in st.session_state:
-        st.session_state.race_frame = len(merged) - 1
-    if 'race_playing' not in st.session_state:
-        st.session_state.race_playing = False
-
-    # Clamp frame to valid range
-    if st.session_state.race_frame >= len(merged):
-        st.session_state.race_frame = len(merged) - 1
-
-    # Compact playback controls inline with slider
-    play_col1, play_col2, play_col3, play_col4, slider_col = st.columns([0.6, 0.6, 0.6, 1, 4])
-
-    with play_col1:
-        if st.button("▶", key="race_play", help="Play"):
-            st.session_state.race_playing = True
-            st.session_state.race_frame = 0
-            st.rerun()
-
-    with play_col2:
-        if st.button("⏸", key="race_pause", help="Pause"):
-            st.session_state.race_playing = False
-
-    with play_col3:
-        if st.button("↺", key="race_reset", help="Reset"):
-            st.session_state.race_playing = False
-            st.session_state.race_frame = 0
-            st.rerun()
-
-    with play_col4:
-        speed = st.selectbox("", ["1x", "2x", "4x", "Max"], index=1, key="race_speed", label_visibility="collapsed")
-
-    with slider_col:
-        if not st.session_state.race_playing:
-            frame_idx = st.slider(
-                "Progress",
-                min_value=0,
-                max_value=len(merged) - 1,
-                value=st.session_state.race_frame,
-                key="race_slider",
-                format="",
-                label_visibility="collapsed"
-            )
-            st.session_state.race_frame = frame_idx
-        else:
-            frame_idx = st.session_state.race_frame
-            progress = (frame_idx + 1) / len(merged)
-            st.progress(progress)
-
-    # Get current frame data
-    current_data = merged.iloc[:frame_idx + 1]
-    current_row = merged.iloc[frame_idx]
-
-    current_date = current_row['aligned_date']
-    current_y1 = current_row['cumulative_y1']
-    current_y2 = current_row['cumulative_y2']
-    current_diff = current_row['diff']
-    current_pct = current_row['pct_diff']
-    current_momentum = current_row['pct_diff_change']
-
-    # Determine momentum status
-    if current_momentum > 0.5:
-        momentum_class = "momentum-accelerating"
-        momentum_text = "↑ Gaining"
-    elif current_momentum < -0.5:
-        momentum_class = "momentum-decelerating"
-        momentum_text = "↓ Falling"
-    else:
-        momentum_class = "momentum-stable"
-        momentum_text = "→ Stable"
-
-    st.markdown("<div style='height: 16px'></div>", unsafe_allow_html=True)
-
-    # Display current date
-    st.markdown(f"""
-        <div style="text-align: center; margin-bottom: 20px;">
-            <span class="race-date-display">{current_date.strftime('%B %d')}</span>
-        </div>
-    """, unsafe_allow_html=True)
-
-    # Ticker display
+    # Summary display
     ticker_col1, ticker_col2, ticker_col3 = st.columns(3)
 
     with ticker_col1:
         st.markdown(f"""
             <div class="race-container" style="text-align: center;">
-                <div class="race-label">{year1} Cumulative</div>
-                <div class="race-ticker" style="color: #3b82f6;">${current_y1:,.0f}</div>
+                <div class="race-label">{year1} Season Total</div>
+                <div class="race-ticker" style="color: #3b82f6; font-size: 32px;">${final_y1:,.0f}</div>
             </div>
         """, unsafe_allow_html=True)
 
     with ticker_col2:
-        change_class = "race-change-positive" if current_pct >= 0 else "race-change-negative"
-        change_sign = "+" if current_pct >= 0 else ""
-        diff_sign = "+" if current_diff >= 0 else ""
+        change_class = "race-change-positive" if final_pct >= 0 else "race-change-negative"
+        change_sign = "+" if final_pct >= 0 else ""
+        diff_sign = "+" if final_diff >= 0 else ""
 
         st.markdown(f"""
             <div class="race-container" style="text-align: center;">
                 <div class="race-label">YoY Change</div>
-                <div class="{change_class}">{change_sign}{current_pct:.1f}%</div>
-                <div style="color: #64748b; font-size: 14px; margin-top: 4px;">{diff_sign}${current_diff:,.0f}</div>
-                <div style="margin-top: 12px;">
-                    <span class="race-momentum {momentum_class}">{momentum_text}</span>
-                </div>
+                <div class="{change_class}">{change_sign}{final_pct:.1f}%</div>
+                <div style="color: #64748b; font-size: 14px; margin-top: 4px;">{diff_sign}${final_diff:,.0f}</div>
             </div>
         """, unsafe_allow_html=True)
 
     with ticker_col3:
         st.markdown(f"""
             <div class="race-container" style="text-align: center;">
-                <div class="race-label">{year2} Cumulative</div>
-                <div class="race-ticker" style="color: #22c55e;">${current_y2:,.0f}</div>
+                <div class="race-label">{year2} Season Total</div>
+                <div class="race-ticker" style="color: #22c55e; font-size: 32px;">${final_y2:,.0f}</div>
             </div>
         """, unsafe_allow_html=True)
 
     st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
 
-    # Create the race chart
+    # Create animated race chart using Plotly frames (runs in browser - no server lag)
     fig = go.Figure()
 
-    # Add traces for both years (full data in background, faded)
+    # Initial traces (will be animated)
     fig.add_trace(go.Scatter(
-        x=merged['aligned_date'],
-        y=merged['cumulative_y1'],
-        mode='lines',
-        name=f'{year1} (full)',
-        line=dict(color='rgba(59, 130, 246, 0.2)', width=1, dash='dot'),
-        hoverinfo='skip',
-        showlegend=False
-    ))
-
-    fig.add_trace(go.Scatter(
-        x=merged['aligned_date'],
-        y=merged['cumulative_y2'],
-        mode='lines',
-        name=f'{year2} (full)',
-        line=dict(color='rgba(34, 197, 94, 0.2)', width=1, dash='dot'),
-        hoverinfo='skip',
-        showlegend=False
-    ))
-
-    # Add animated traces (current progress)
-    fig.add_trace(go.Scatter(
-        x=current_data['aligned_date'],
-        y=current_data['cumulative_y1'],
+        x=[merged['aligned_date'].iloc[0]],
+        y=[merged['cumulative_y1'].iloc[0]],
         mode='lines',
         name=str(year1),
         line=dict(color='#3b82f6', width=3),
-        fill='tozeroy',
-        fillcolor='rgba(59, 130, 246, 0.1)',
         hovertemplate=f'{year1}: $%{{y:,.0f}}<extra></extra>'
     ))
 
     fig.add_trace(go.Scatter(
-        x=current_data['aligned_date'],
-        y=current_data['cumulative_y2'],
+        x=[merged['aligned_date'].iloc[0]],
+        y=[merged['cumulative_y2'].iloc[0]],
         mode='lines',
         name=str(year2),
         line=dict(color='#22c55e', width=3),
-        fill='tozeroy',
-        fillcolor='rgba(34, 197, 94, 0.1)',
         hovertemplate=f'{year2}: $%{{y:,.0f}}<extra></extra>'
     ))
 
-    # Add current position markers
-    fig.add_trace(go.Scatter(
-        x=[current_date],
-        y=[current_y1],
-        mode='markers',
-        name='',
-        marker=dict(color='#3b82f6', size=12, symbol='circle',
-                   line=dict(color='white', width=2)),
-        showlegend=False,
-        hoverinfo='skip'
-    ))
+    # Build animation frames (sample every few days for performance)
+    step = max(1, len(merged) // 60)  # ~60 frames max for smooth animation
+    frame_indices = list(range(0, len(merged), step)) + [len(merged) - 1]
+    frame_indices = sorted(set(frame_indices))
 
-    fig.add_trace(go.Scatter(
-        x=[current_date],
-        y=[current_y2],
-        mode='markers',
-        name='',
-        marker=dict(color='#22c55e', size=12, symbol='circle',
-                   line=dict(color='white', width=2)),
-        showlegend=False,
-        hoverinfo='skip'
-    ))
+    frames = []
+    for i in frame_indices:
+        frame_data = merged.iloc[:i + 1]
+        frames.append(go.Frame(
+            data=[
+                go.Scatter(x=frame_data['aligned_date'], y=frame_data['cumulative_y1']),
+                go.Scatter(x=frame_data['aligned_date'], y=frame_data['cumulative_y2']),
+            ],
+            name=str(i)
+        ))
 
-    # Mark only the top 2 positive and top 2 negative momentum shifts
-    deviations = current_data.copy()
-    deviations['abs_swing'] = deviations['pct_diff_change'].abs()
+    fig.frames = frames
 
-    # Get top 2 biggest positive swings and top 2 biggest negative swings
-    top_positive = deviations[deviations['pct_diff_change'] > 0].nlargest(2, 'pct_diff_change')
-    top_negative = deviations[deviations['pct_diff_change'] < 0].nsmallest(2, 'pct_diff_change')
+    # Find key momentum shifts for annotations
+    merged['abs_swing'] = merged['pct_diff_change'].abs()
+    top_positive = merged[merged['pct_diff_change'] > 0].nlargest(2, 'pct_diff_change')
+    top_negative = merged[merged['pct_diff_change'] < 0].nsmallest(2, 'pct_diff_change')
     key_moments = pd.concat([top_positive, top_negative])
-
-    # Only show if swing is significant (> 3%)
     key_moments = key_moments[key_moments['abs_swing'] > 3]
 
     for _, dev in key_moments.iterrows():
@@ -3832,8 +3716,59 @@ def render_season_race(df):
             yshift=15
         )
 
-    layout = get_chart_layout(400)
+    # Animation controls
+    fig.update_layout(
+        updatemenus=[
+            dict(
+                type="buttons",
+                showactive=False,
+                y=1.15,
+                x=0,
+                xanchor="left",
+                buttons=[
+                    dict(label="▶ Play",
+                         method="animate",
+                         args=[None, {"frame": {"duration": 50, "redraw": True},
+                                     "fromcurrent": True,
+                                     "transition": {"duration": 0}}]),
+                    dict(label="⏸ Pause",
+                         method="animate",
+                         args=[[None], {"frame": {"duration": 0, "redraw": False},
+                                       "mode": "immediate",
+                                       "transition": {"duration": 0}}]),
+                ]
+            )
+        ],
+        sliders=[{
+            "active": len(frames) - 1,
+            "yanchor": "top",
+            "xanchor": "left",
+            "currentvalue": {
+                "prefix": "Date: ",
+                "visible": True,
+                "xanchor": "center",
+                "font": {"size": 12, "color": "#9ca3af"}
+            },
+            "transition": {"duration": 0},
+            "pad": {"b": 10, "t": 30},
+            "len": 0.9,
+            "x": 0.05,
+            "y": 0,
+            "steps": [
+                {"args": [[str(i)], {"frame": {"duration": 0, "redraw": True},
+                                     "mode": "immediate",
+                                     "transition": {"duration": 0}}],
+                 "label": merged.iloc[i]['aligned_date'].strftime('%b %d'),
+                 "method": "animate"}
+                for i in frame_indices
+            ]
+        }]
+    )
+
+    layout = get_chart_layout(450)
     layout['xaxis']['tickformat'] = '%b %d'
+    layout['xaxis']['range'] = [merged['aligned_date'].min(), merged['aligned_date'].max()]
+    layout['yaxis']['range'] = [0, max(merged['cumulative_y1'].max(), merged['cumulative_y2'].max()) * 1.1]
     layout['legend'] = dict(
         orientation='h',
         yanchor='bottom',
@@ -3842,59 +3777,29 @@ def render_season_race(df):
         x=1,
         font=dict(color='#e5e7eb', size=14)
     )
-    layout['margin'] = dict(l=10, r=10, t=50, b=30)
+    layout['margin'] = dict(l=10, r=10, t=60, b=80)
     layout['hovermode'] = 'x unified'
 
     fig.update_layout(**layout)
 
     st.plotly_chart(fig, use_container_width=True, key="race_main_chart")
 
-    # Stats and momentum in two columns
-    stats_col, momentum_col = st.columns([3, 2])
+    # Stats section
+    st.markdown('<p style="color: #6b7280; font-size: 12px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Season Stats</p>', unsafe_allow_html=True)
 
-    # Calculate stats from current progress
-    max_lead = current_data['pct_diff'].max()
-    max_deficit = current_data['pct_diff'].min()
-    biggest_swing = current_data['pct_diff_change'].abs().max()
-    deviation_count = len(current_data[current_data['is_deviation']])
+    max_lead = merged['pct_diff'].max()
+    max_deficit = merged['pct_diff'].min()
+    biggest_swing = merged['pct_diff_change'].abs().max()
 
-    with stats_col:
-        st.markdown('<p style="color: #6b7280; font-size: 12px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Season Stats</p>', unsafe_allow_html=True)
-        s1, s2, s3, s4 = st.columns(4)
-        with s1:
-            render_kpi_card("Best Lead", f"+{max_lead:.1f}%" if max_lead > 0 else f"{max_lead:.1f}%")
-        with s2:
-            render_kpi_card("Worst Gap", f"{max_deficit:.1f}%")
-        with s3:
-            render_kpi_card("Max Swing", f"{biggest_swing:.1f}%")
-        with s4:
-            render_kpi_card("Shifts", f"{deviation_count}")
-
-    with momentum_col:
-        recent_deviations = current_data[current_data['is_deviation']].tail(3)
-        if len(recent_deviations) > 0:
-            st.markdown('<p style="color: #6b7280; font-size: 12px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Recent Momentum Shifts</p>', unsafe_allow_html=True)
-            for _, dev in recent_deviations.iterrows():
-                dev_class = "deviation-alert-positive" if dev['pct_diff_change'] > 0 else "deviation-alert-negative"
-                dev_direction = "↑" if dev['pct_diff_change'] > 0 else "↓"
-                st.markdown(f"""
-                    <div class="deviation-alert {dev_class}" style="padding: 8px 12px; margin: 4px 0; font-size: 13px;">
-                        <strong>{dev['aligned_date'].strftime('%b %d')}</strong> {dev_direction} {abs(dev['pct_diff_change']):.1f}%
-                    </div>
-                """, unsafe_allow_html=True)
-
-    # Auto-play logic (using rerun)
-    if st.session_state.race_playing:
-        if frame_idx < len(merged) - 1:
-            speed_map = {"1x": 0.2, "2x": 0.1, "4x": 0.04, "Max": 0.015}
-            import time
-            time.sleep(speed_map.get(speed, 0.1))
-            st.session_state.race_frame = frame_idx + 1
-            st.rerun()
-        else:
-            # Reached end, stop playing
-            st.session_state.race_playing = False
-            st.rerun()
+    s1, s2, s3, s4 = st.columns(4)
+    with s1:
+        render_kpi_card("Best Lead", f"+{max_lead:.1f}%" if max_lead > 0 else f"{max_lead:.1f}%")
+    with s2:
+        render_kpi_card("Worst Gap", f"{max_deficit:.1f}%")
+    with s3:
+        render_kpi_card("Max Swing", f"{biggest_swing:.1f}%")
+    with s4:
+        render_kpi_card("Key Shifts", f"{len(key_moments)}")
 
 
 # =============================================================================
