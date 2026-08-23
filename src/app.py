@@ -615,7 +615,12 @@ def style_dataframe_with_changes(df, money_cols=None, pct_cols=None, int_cols=No
         styled = styled.format(format_dict)
 
     if change_cols:
-        styled = styled.applymap(color_negative_red, subset=[c for c in change_cols if c in df.columns])
+        # Use map instead of applymap (applymap is deprecated in pandas 2.1+)
+        try:
+            styled = styled.map(color_negative_red, subset=[c for c in change_cols if c in df.columns])
+        except AttributeError:
+            # Fallback for older pandas
+            styled = styled.applymap(color_negative_red, subset=[c for c in change_cols if c in df.columns])
 
     return styled
 
