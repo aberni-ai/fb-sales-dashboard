@@ -2630,13 +2630,6 @@ def main():
     with header_col2:
         st.markdown("<div style='height: 16px'></div>", unsafe_allow_html=True)
 
-        # DEBUG: Show query params (remove after testing)
-        st.caption(f"URL params: {dict(st.query_params)} | Admin: {admin_mode}")
-
-        # Debug indicator for admin mode
-        if admin_mode:
-            st.markdown('<span style="color: #22c55e; font-size: 10px;">ADMIN</span>', unsafe_allow_html=True)
-
         # Show toggle directly in header if adjustment is configured (visible to all users)
         if adj_pct_configured:
             # Toggle visible directly in header for all users
