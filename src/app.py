@@ -3617,8 +3617,10 @@ def render_season_race(df):
     merged['pct_diff'] = ((merged['cumulative_y2'] - merged['cumulative_y1']) / merged['cumulative_y1'] * 100).fillna(0)
     merged['pct_diff_change'] = merged['pct_diff'].diff().fillna(0)  # Momentum
 
-    # Find key moments (deviations > 2% change in a day)
-    merged['is_deviation'] = abs(merged['pct_diff_change']) > 2
+    # Find key moments - only the top 3 biggest momentum swings (not every small change)
+    # Use percentile-based threshold to only flag truly significant shifts
+    swing_threshold = merged['pct_diff_change'].abs().quantile(0.95)  # Top 5% of swings
+    merged['is_deviation'] = abs(merged['pct_diff_change']) >= max(swing_threshold, 5)  # At least 5% swing
 
     # Initialize session state BEFORE controls
     if 'race_frame' not in st.session_state:
@@ -3807,17 +3809,27 @@ def render_season_race(df):
         hoverinfo='skip'
     ))
 
-    # Mark deviation points that have occurred
-    deviations = current_data[current_data['is_deviation']]
-    for _, dev in deviations.iterrows():
+    # Mark only the top 2 positive and top 2 negative momentum shifts
+    deviations = current_data.copy()
+    deviations['abs_swing'] = deviations['pct_diff_change'].abs()
+
+    # Get top 2 biggest positive swings and top 2 biggest negative swings
+    top_positive = deviations[deviations['pct_diff_change'] > 0].nlargest(2, 'pct_diff_change')
+    top_negative = deviations[deviations['pct_diff_change'] < 0].nsmallest(2, 'pct_diff_change')
+    key_moments = pd.concat([top_positive, top_negative])
+
+    # Only show if swing is significant (> 3%)
+    key_moments = key_moments[key_moments['abs_swing'] > 3]
+
+    for _, dev in key_moments.iterrows():
         dev_color = '#22c55e' if dev['pct_diff_change'] > 0 else '#ef4444'
         fig.add_annotation(
             x=dev['aligned_date'],
             y=max(dev['cumulative_y1'], dev['cumulative_y2']),
             text="⚡",
             showarrow=False,
-            font=dict(size=16),
-            yshift=20
+            font=dict(size=14, color=dev_color),
+            yshift=15
         )
 
     layout = get_chart_layout(400)
