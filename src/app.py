@@ -3895,34 +3895,43 @@ def render_season_race(df):
         with s4:
             render_kpi_card("Max Daily Swing", f"{post_july_swing:.1f}%")
 
-    # Key momentum shifts table
+    # Key momentum shifts table (3-day average momentum, after June 15)
     render_section_divider()
-    render_card_header("Key Momentum Shifts")
+    render_card_header("Key Momentum Shifts (3-Day Avg)")
 
-    # Find significant momentum shifts (top 5 biggest daily swings)
-    significant_swings = merged.nlargest(5, 'abs_swing').copy()
-    significant_swings = significant_swings[significant_swings['abs_swing'] > 1]  # At least 1% swing
+    # Calculate 3-day rolling average of momentum change
+    merged['momentum_3day'] = merged['pct_diff_change'].rolling(window=3, min_periods=1).mean()
+    merged['abs_momentum_3day'] = merged['momentum_3day'].abs()
 
-    if len(significant_swings) > 0:
-        swing_data = []
-        for _, row in significant_swings.iterrows():
-            date_str = row['aligned_date'].strftime('%b %d')
-            direction = "↑ Gained" if row['pct_diff_change'] > 0 else "↓ Lost"
-            swing_pct = abs(row['pct_diff_change'])
-            gap_status = f"+{row['pct_diff']:.1f}%" if row['pct_diff'] >= 0 else f"{row['pct_diff']:.1f}%"
-            phase = "Early Season" if row['aligned_date'] < july_1st else "Peak Season"
+    # Filter to after June 15 only
+    june_15th = datetime(REFERENCE_YEAR, 6, 15)
+    post_june15 = merged[merged['aligned_date'] >= june_15th].copy()
 
-            swing_data.append({
-                'Date': date_str,
-                'Shift': f"{direction} {swing_pct:.1f}%",
-                'Gap After': gap_status,
-                'Phase': phase
-            })
+    if len(post_june15) > 0:
+        # Find top 5 biggest 3-day momentum shifts
+        significant_swings = post_june15.nlargest(5, 'abs_momentum_3day').copy()
 
-        swing_df = pd.DataFrame(swing_data)
-        st.dataframe(swing_df, use_container_width=True, hide_index=True, height=200)
+        if len(significant_swings) > 0:
+            swing_data = []
+            for _, row in significant_swings.iterrows():
+                date_str = row['aligned_date'].strftime('%b %d')
+                momentum_val = row['momentum_3day']
+                direction = "↑ Gaining" if momentum_val > 0 else "↓ Losing"
+                momentum_pct = abs(momentum_val)
+                gap_status = f"+{row['pct_diff']:.1f}%" if row['pct_diff'] >= 0 else f"{row['pct_diff']:.1f}%"
+
+                swing_data.append({
+                    'Date': date_str,
+                    '3-Day Momentum': f"{direction} {momentum_pct:.1f}%/day",
+                    'YoY Gap': gap_status
+                })
+
+            swing_df = pd.DataFrame(swing_data)
+            st.dataframe(swing_df, use_container_width=True, hide_index=True, height=200)
+        else:
+            st.caption("No significant momentum shifts detected.")
     else:
-        st.caption("No significant momentum shifts detected.")
+        st.caption("Not enough data after June 15.")
 
 
 # =============================================================================
