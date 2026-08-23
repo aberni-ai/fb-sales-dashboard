@@ -3470,63 +3470,50 @@ def render_season_race(df):
         </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("""
-        <div class="section-header">
-            <div class="section-title">Season Race</div>
-            <div class="section-subtitle">Watch the season unfold with real-time style YoY comparison</div>
-        </div>
-    """, unsafe_allow_html=True)
-
     # Get available years
     years = sorted(df['year'].dropna().unique())
     if len(years) < 2:
         st.info("Need at least 2 years of data for comparison.")
         return
 
-    # Controls row
-    col1, col2, col3, col4 = st.columns([1.5, 2, 1, 1])
+    # Compact controls row
+    col1, col2, col3, col4 = st.columns([1.2, 1.8, 0.8, 0.8])
 
     with col1:
-        compare_type = st.selectbox(
-            "Compare",
-            ["All Sales", "Category", "Location", "Item"],
-            key="race_compare_type"
-        )
+        compare_type = st.selectbox("Compare", ["All Sales", "Category", "Location", "Item"], key="race_compare_type", label_visibility="collapsed")
 
     with col2:
         if compare_type == "Category":
             categories = sorted([c for c in df['category'].unique() if c and pd.notna(c)])
-            selected_entity = st.selectbox("Select Category", categories, key="race_category")
+            selected_entity = st.selectbox("Category", categories, key="race_category", label_visibility="collapsed")
         elif compare_type == "Location":
-            # Load location data
             try:
                 loc_df = read_sql("SELECT DISTINCT location FROM location_sales")
                 locations = sorted(loc_df['location'].tolist())
             except:
                 locations = []
             if locations:
-                selected_entity = st.selectbox("Select Location", locations, key="race_location")
+                selected_entity = st.selectbox("Location", locations, key="race_location", label_visibility="collapsed")
             else:
-                st.info("No location data available")
+                st.caption("No location data")
                 selected_entity = None
         elif compare_type == "Item":
             items = sorted([i for i in df['plu_name'].unique() if i and pd.notna(i)])
-            selected_entity = st.selectbox("Select Item", items, key="race_item")
+            selected_entity = st.selectbox("Item", items, key="race_item", label_visibility="collapsed")
         else:
             selected_entity = "All"
+            st.caption("All F&B Sales")
 
     with col3:
-        year1 = st.selectbox("Year 1", [int(y) for y in years[:-1]], index=len(years)-2, key="race_year1")
+        year1 = st.selectbox("Y1", [int(y) for y in years[:-1]], index=len(years)-2, key="race_year1", label_visibility="collapsed")
 
     with col4:
         year2_options = [int(y) for y in years if y > year1]
         if year2_options:
-            year2 = st.selectbox("Year 2", year2_options, index=len(year2_options)-1, key="race_year2")
+            year2 = st.selectbox("Y2", year2_options, index=len(year2_options)-1, key="race_year2", label_visibility="collapsed")
         else:
             year2 = int(years[-1])
-            st.selectbox("Year 2", [year2], key="race_year2")
-
-    st.markdown("<div style='height: 16px'></div>", unsafe_allow_html=True)
+            st.selectbox("Y2", [year2], key="race_year2", label_visibility="collapsed")
 
     # Prepare data based on comparison type
     if compare_type == "Location" and selected_entity:
@@ -3572,10 +3559,14 @@ def render_season_race(df):
     daily_y1['date'] = pd.to_datetime(daily_y1['date'])
     daily_y2['date'] = pd.to_datetime(daily_y2['date'])
 
+    # Filter to May 1st onwards (season start)
+    daily_y1 = daily_y1[daily_y1['date'].dt.month >= 5]
+    daily_y2 = daily_y2[daily_y2['date'].dt.month >= 5]
+
     daily_y1 = daily_y1.sort_values('date')
     daily_y2 = daily_y2.sort_values('date')
 
-    # Calculate cumulative
+    # Calculate cumulative (starting from May 1)
     daily_y1['cumulative'] = daily_y1['sales'].cumsum()
     daily_y2['cumulative'] = daily_y2['sales'].cumsum()
 
@@ -3609,6 +3600,10 @@ def render_season_race(df):
         suffixes=('_y1', '_y2')
     ).sort_values('aligned_date')
 
+    # Filter to start from May 1st
+    may_1st = datetime(REFERENCE_YEAR, 5, 1)
+    merged = merged[merged['aligned_date'] >= may_1st].reset_index(drop=True)
+
     if len(merged) == 0:
         st.warning("No overlapping dates between the two years.")
         return
@@ -3621,50 +3616,54 @@ def render_season_race(df):
     # Find key moments (deviations > 2% change in a day)
     merged['is_deviation'] = abs(merged['pct_diff_change']) > 2
 
-    # Animation controls
-    st.markdown("### Playback Controls")
-
-    control_col1, control_col2, control_col3, control_col4 = st.columns([1, 1, 1, 2])
-
-    with control_col1:
-        if st.button("▶ Play", key="race_play", use_container_width=True, type="primary"):
-            st.session_state.race_playing = True
-            st.session_state.race_frame = 0
-
-    with control_col2:
-        if st.button("⏸ Pause", key="race_pause", use_container_width=True):
-            st.session_state.race_playing = False
-
-    with control_col3:
-        if st.button("↺ Reset", key="race_reset", use_container_width=True):
-            st.session_state.race_playing = False
-            st.session_state.race_frame = 0
-
-    with control_col4:
-        speed = st.select_slider(
-            "Speed",
-            options=["0.5x", "1x", "2x", "4x", "Max"],
-            value="2x",
-            key="race_speed"
-        )
-
-    # Initialize session state
+    # Initialize session state BEFORE controls
     if 'race_frame' not in st.session_state:
-        st.session_state.race_frame = len(merged) - 1  # Start at end
+        st.session_state.race_frame = len(merged) - 1
     if 'race_playing' not in st.session_state:
         st.session_state.race_playing = False
 
-    # Frame slider
-    frame_idx = st.slider(
-        "Season Progress",
-        min_value=0,
-        max_value=len(merged) - 1,
-        value=st.session_state.race_frame,
-        key="race_slider",
-        format=""
-    )
+    # Clamp frame to valid range
+    if st.session_state.race_frame >= len(merged):
+        st.session_state.race_frame = len(merged) - 1
 
-    st.session_state.race_frame = frame_idx
+    # Compact playback controls inline with slider
+    play_col1, play_col2, play_col3, play_col4, slider_col = st.columns([0.6, 0.6, 0.6, 1, 4])
+
+    with play_col1:
+        if st.button("▶", key="race_play", help="Play"):
+            st.session_state.race_playing = True
+            st.session_state.race_frame = 0
+            st.rerun()
+
+    with play_col2:
+        if st.button("⏸", key="race_pause", help="Pause"):
+            st.session_state.race_playing = False
+
+    with play_col3:
+        if st.button("↺", key="race_reset", help="Reset"):
+            st.session_state.race_playing = False
+            st.session_state.race_frame = 0
+            st.rerun()
+
+    with play_col4:
+        speed = st.selectbox("", ["1x", "2x", "4x", "Max"], index=1, key="race_speed", label_visibility="collapsed")
+
+    with slider_col:
+        if not st.session_state.race_playing:
+            frame_idx = st.slider(
+                "Progress",
+                min_value=0,
+                max_value=len(merged) - 1,
+                value=st.session_state.race_frame,
+                key="race_slider",
+                format="",
+                label_visibility="collapsed"
+            )
+            st.session_state.race_frame = frame_idx
+        else:
+            frame_idx = st.session_state.race_frame
+            progress = (frame_idx + 1) / len(merged)
+            st.progress(progress)
 
     # Get current frame data
     current_data = merged.iloc[:frame_idx + 1]
@@ -3834,26 +3833,8 @@ def render_season_race(df):
 
     st.plotly_chart(fig, use_container_width=True, key="race_main_chart")
 
-    # Show recent deviations/alerts
-    recent_deviations = current_data[current_data['is_deviation']].tail(3)
-
-    if len(recent_deviations) > 0:
-        st.markdown("### Recent Momentum Shifts")
-        for _, dev in recent_deviations.iterrows():
-            dev_class = "deviation-alert-positive" if dev['pct_diff_change'] > 0 else "deviation-alert-negative"
-            dev_direction = "gained" if dev['pct_diff_change'] > 0 else "lost"
-            st.markdown(f"""
-                <div class="deviation-alert {dev_class}">
-                    <strong>{dev['aligned_date'].strftime('%B %d')}</strong>:
-                    {year2} {dev_direction} {abs(dev['pct_diff_change']):.1f}% momentum
-                    (Gap now {'+' if dev['pct_diff'] >= 0 else ''}{dev['pct_diff']:.1f}%)
-                </div>
-            """, unsafe_allow_html=True)
-
-    # Season summary stats
-    st.markdown("### Season Stats")
-
-    stats_col1, stats_col2, stats_col3, stats_col4 = st.columns(4)
+    # Stats and momentum in two columns
+    stats_col, momentum_col = st.columns([3, 2])
 
     # Calculate stats from current progress
     max_lead = current_data['pct_diff'].max()
@@ -3861,27 +3842,43 @@ def render_season_race(df):
     biggest_swing = current_data['pct_diff_change'].abs().max()
     deviation_count = len(current_data[current_data['is_deviation']])
 
-    with stats_col1:
-        render_kpi_card("Best Lead", f"+{max_lead:.1f}%" if max_lead > 0 else f"{max_lead:.1f}%")
+    with stats_col:
+        st.markdown('<p style="color: #6b7280; font-size: 12px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Season Stats</p>', unsafe_allow_html=True)
+        s1, s2, s3, s4 = st.columns(4)
+        with s1:
+            render_kpi_card("Best Lead", f"+{max_lead:.1f}%" if max_lead > 0 else f"{max_lead:.1f}%")
+        with s2:
+            render_kpi_card("Worst Gap", f"{max_deficit:.1f}%")
+        with s3:
+            render_kpi_card("Max Swing", f"{biggest_swing:.1f}%")
+        with s4:
+            render_kpi_card("Shifts", f"{deviation_count}")
 
-    with stats_col2:
-        render_kpi_card("Worst Deficit", f"{max_deficit:.1f}%")
-
-    with stats_col3:
-        render_kpi_card("Biggest Swing", f"{biggest_swing:.1f}%")
-
-    with stats_col4:
-        render_kpi_card("Momentum Shifts", f"{deviation_count}")
+    with momentum_col:
+        recent_deviations = current_data[current_data['is_deviation']].tail(3)
+        if len(recent_deviations) > 0:
+            st.markdown('<p style="color: #6b7280; font-size: 12px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Recent Momentum Shifts</p>', unsafe_allow_html=True)
+            for _, dev in recent_deviations.iterrows():
+                dev_class = "deviation-alert-positive" if dev['pct_diff_change'] > 0 else "deviation-alert-negative"
+                dev_direction = "↑" if dev['pct_diff_change'] > 0 else "↓"
+                st.markdown(f"""
+                    <div class="deviation-alert {dev_class}" style="padding: 8px 12px; margin: 4px 0; font-size: 13px;">
+                        <strong>{dev['aligned_date'].strftime('%b %d')}</strong> {dev_direction} {abs(dev['pct_diff_change']):.1f}%
+                    </div>
+                """, unsafe_allow_html=True)
 
     # Auto-play logic (using rerun)
-    if st.session_state.race_playing and frame_idx < len(merged) - 1:
-        speed_map = {"0.5x": 0.4, "1x": 0.2, "2x": 0.1, "4x": 0.05, "Max": 0.01}
-        import time
-        time.sleep(speed_map.get(speed, 0.1))
-        st.session_state.race_frame = frame_idx + 1
-        st.rerun()
-    elif st.session_state.race_playing and frame_idx >= len(merged) - 1:
-        st.session_state.race_playing = False
+    if st.session_state.race_playing:
+        if frame_idx < len(merged) - 1:
+            speed_map = {"1x": 0.2, "2x": 0.1, "4x": 0.04, "Max": 0.015}
+            import time
+            time.sleep(speed_map.get(speed, 0.1))
+            st.session_state.race_frame = frame_idx + 1
+            st.rerun()
+        else:
+            # Reached end, stop playing
+            st.session_state.race_playing = False
+            st.rerun()
 
 
 # =============================================================================
