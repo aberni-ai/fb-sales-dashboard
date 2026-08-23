@@ -4012,10 +4012,11 @@ def render_season_race(df):
 
     # Key momentum shifts table (3-day average momentum, after June 15)
     render_section_divider()
-    render_card_header("Key Momentum Shifts (3-Day Avg)")
+    render_card_header("Momentum Analysis")
 
     # Calculate 3-day rolling average of momentum change
     merged['momentum_3day'] = merged['pct_diff_change'].rolling(window=3, min_periods=1).mean()
+    merged['momentum_7day'] = merged['pct_diff_change'].rolling(window=7, min_periods=3).mean()
     merged['abs_momentum_3day'] = merged['momentum_3day'].abs()
 
     # Filter to after June 15 only
@@ -4023,28 +4024,56 @@ def render_season_race(df):
     post_june15 = merged[merged['aligned_date'] >= june_15th].copy()
 
     if len(post_june15) > 0:
-        # Find top 5 biggest 3-day momentum shifts
-        significant_swings = post_june15.nlargest(5, 'abs_momentum_3day').copy()
+        # Current momentum status (last 7 days)
+        recent_momentum = post_june15['momentum_7day'].iloc[-1] if len(post_june15) > 0 else 0
+        recent_momentum_3d = post_june15['momentum_3day'].iloc[-1] if len(post_june15) > 0 else 0
 
-        if len(significant_swings) > 0:
-            swing_data = []
-            for _, row in significant_swings.iterrows():
-                date_str = row['aligned_date'].strftime('%b %d')
-                momentum_val = row['momentum_3day']
-                direction = "↑ Gaining" if momentum_val > 0 else "↓ Losing"
-                momentum_pct = abs(momentum_val)
-                gap_status = f"+{row['pct_diff']:.1f}%" if row['pct_diff'] >= 0 else f"{row['pct_diff']:.1f}%"
-
-                swing_data.append({
-                    'Date': date_str,
-                    '3-Day Momentum': f"{direction} {momentum_pct:.1f}%/day",
-                    'YoY Gap': gap_status
-                })
-
-            swing_df = pd.DataFrame(swing_data)
-            st.dataframe(swing_df, use_container_width=True, hide_index=True, height=200)
+        if recent_momentum > 0.3:
+            momentum_status = f"🟢 {year2} Gaining ({recent_momentum_3d:+.2f}%/day)"
+            momentum_desc = f"{year2} is pulling further ahead"
+        elif recent_momentum < -0.3:
+            momentum_status = f"🔴 {year2} Losing ({recent_momentum_3d:+.2f}%/day)"
+            momentum_desc = f"{year1} is catching up"
         else:
-            st.caption("No significant momentum shifts detected.")
+            momentum_status = f"⚪ Stable ({recent_momentum_3d:+.2f}%/day)"
+            momentum_desc = "Gap holding steady"
+
+        st.markdown(f"""
+            <div style="background: rgba(30, 41, 59, 0.5); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px;">
+                <div style="font-size: 16px; font-weight: 600; color: #e5e7eb;">{momentum_status}</div>
+                <div style="font-size: 13px; color: #9ca3af; margin-top: 4px;">{momentum_desc}</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # Show top 3 gaining and top 3 losing momentum days
+        st.markdown('<p style="color: #9ca3af; font-size: 12px; margin: 12px 0 8px 0;">Top Momentum Shifts (after Jun 15)</p>', unsafe_allow_html=True)
+
+        top_gaining = post_june15.nlargest(3, 'momentum_3day')[['aligned_date', 'momentum_3day', 'pct_diff']]
+        top_losing = post_june15.nsmallest(3, 'momentum_3day')[['aligned_date', 'momentum_3day', 'pct_diff']]
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown(f'<p style="color: #22c55e; font-size: 11px; text-transform: uppercase;">🔺 {year2} Gaining Days</p>', unsafe_allow_html=True)
+            if len(top_gaining) > 0:
+                for _, row in top_gaining.iterrows():
+                    st.markdown(f"""
+                        <div style="color: #e5e7eb; font-size: 13px; padding: 4px 0;">
+                            <span style="color: #6b7280;">{row['aligned_date'].strftime('%b %d')}</span>
+                            <span style="color: #22c55e; margin-left: 8px;">+{row['momentum_3day']:.2f}%/day</span>
+                        </div>
+                    """, unsafe_allow_html=True)
+
+        with col2:
+            st.markdown(f'<p style="color: #ef4444; font-size: 11px; text-transform: uppercase;">🔻 {year2} Losing Days</p>', unsafe_allow_html=True)
+            if len(top_losing) > 0:
+                for _, row in top_losing.iterrows():
+                    st.markdown(f"""
+                        <div style="color: #e5e7eb; font-size: 13px; padding: 4px 0;">
+                            <span style="color: #6b7280;">{row['aligned_date'].strftime('%b %d')}</span>
+                            <span style="color: #ef4444; margin-left: 8px;">{row['momentum_3day']:.2f}%/day</span>
+                        </div>
+                    """, unsafe_allow_html=True)
     else:
         st.caption("Not enough data after June 15.")
 
