@@ -211,7 +211,7 @@ st.markdown("""
 
     .dash-subtitle {
         color: #9ca3af !important;
-        font-size: 14px !important;
+        font-size: 16px !important;
         margin-top: 4px !important;
     }
 
