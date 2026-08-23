@@ -2686,8 +2686,7 @@ def main():
         st.markdown(f"""
             <div class="dash-header">
                 <div>
-                    <span class="dash-title">Canobie Lake Park</span>
-                    <span class="badge">F&B Sales</span>{norm_indicator}
+                    <span class="dash-title">Canobie Lake Park</span>{norm_indicator}
                 </div>
                 <div class="dash-subtitle">Food & Beverage Sales Dashboard{last_updated_text}</div>
             </div>
