@@ -887,10 +887,14 @@ def render_sales_overview(df):
     st.markdown('<div class="card">', unsafe_allow_html=True)
     render_card_header("Average Sales by Day of Week")
 
-    # Calculate average sales by day of week
-    dow_data = paid_items.groupby('day_of_week').agg({
-        'total_price': 'sum',
-        'date': lambda x: x.dt.date.nunique()
+    # First, get daily totals and filter to only operating days (>$10k)
+    daily_totals = paid_items.groupby([paid_items['date'].dt.date, 'day_of_week'])['total_price'].sum().reset_index()
+    daily_totals.columns = ['date', 'day_of_week', 'daily_sales']
+    operating_days_only = daily_totals[daily_totals['daily_sales'] > 10000]
+
+    # Calculate average sales by day of week (only from operating days)
+    dow_data = operating_days_only.groupby('day_of_week').agg({
+        'daily_sales': ['sum', 'count']
     }).reset_index()
     dow_data.columns = ['day', 'total_sales', 'num_days']
     dow_data['avg_sales'] = dow_data['total_sales'] / dow_data['num_days']
