@@ -1503,7 +1503,7 @@ def render_comparison(df):
     layout['hovermode'] = 'x unified'
     fig.update_layout(**layout)
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="comp_item_trend_chart")
 
     # Show summary for 2-year comparison
     if len(trend_years) == 2 and len(merged) > 0:
@@ -2362,7 +2362,7 @@ def render_items(df):
     layout['hovermode'] = 'x unified'
     fig.update_layout(**layout)
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="items_tab_trend_chart")
 
     # Show summary for 2-year comparison
     if len(trend_years) == 2 and len(merged) > 0:
