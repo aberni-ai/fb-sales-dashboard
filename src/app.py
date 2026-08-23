@@ -873,6 +873,9 @@ def render_comparison(df):
         filtered_df = filtered_df[filtered_df['plu_name'].isin(selected_items)]
         group_col = 'plu_name'
 
+    # Apply attendance adjustment to prior years (if enabled by admin)
+    filtered_df = apply_attendance_adjustment(filtered_df, value_cols=['total_price', 'total_qty'])
+
     # Determine metric column
     metric_col = 'total_price' if metric == "Sales ($)" else 'total_qty'
     metric_label = "Sales" if metric == "Sales ($)" else "Units"
@@ -1175,6 +1178,9 @@ def render_remaining_season_forecast(df):
         (last_year_df['month'] <= season_end_month)
     ]
 
+    # Apply attendance adjustment to prior year data (if enabled)
+    last_year_remaining = apply_attendance_adjustment(last_year_remaining, value_cols=['total_price', 'total_qty'])
+
     if len(last_year_remaining) == 0:
         st.warning(f"No data found for {last_year} from {last_year_start.strftime('%B %d')} through end of season.")
         return
@@ -1200,8 +1206,11 @@ def render_remaining_season_forecast(df):
     # Projected full season = YTD + remaining (based on last year)
     projected_full_season = this_year_ytd_sales + last_year_remaining_sales
 
-    # Get last year's full season for comparison
-    last_year_season = last_year_df[last_year_df['month'].isin([5, 6, 7, 8, 9, 10, 11])]
+    # Get last year's full season for comparison (adjustment already applied via last_year_df)
+    last_year_season = apply_attendance_adjustment(
+        last_year_df[last_year_df['month'].isin([5, 6, 7, 8, 9, 10, 11])].copy(),
+        value_cols=['total_price', 'total_qty']
+    )
     last_year_full_sales = last_year_season['total_price'].sum()
 
     # Calculate YoY projection vs actual
@@ -1617,6 +1626,9 @@ def render_items(df):
         filtered = filtered[filtered['category'] == selected_cat]
     if selected_subcat != 'All Subcategories':
         filtered = filtered[filtered['subcategory'] == selected_subcat]
+
+    # Apply attendance adjustment to prior years (if enabled)
+    filtered = apply_attendance_adjustment(filtered, value_cols=['total_price', 'total_qty'])
 
     # Only include items with sales > 0
     filtered = filtered[filtered['total_price'] > 0]
@@ -2311,6 +2323,9 @@ def render_locations():
                 (filtered_df['date'].dt.date <= end_date)
             ]
 
+    # Apply attendance adjustment to prior years (if enabled)
+    filtered_df = apply_attendance_adjustment(filtered_df, value_cols=['gross_sales'])
+
     loc_df = filtered_df
 
     # KPIs - show year comparison if both years selected
@@ -2455,6 +2470,117 @@ def process_location_uploads(uploaded_files):
 
 
 # =============================================================================
+# ATTENDANCE ADJUSTMENT
+# =============================================================================
+
+def is_admin_mode():
+    """Check if admin mode is enabled via URL parameter."""
+    # Access via ?admin=clp in URL to enable admin features (to SET the percentage)
+    try:
+        params = st.query_params
+        admin_val = params.get("admin", "")
+        # Handle both string and list returns from query_params
+        if isinstance(admin_val, list):
+            admin_val = admin_val[0] if admin_val else ""
+        return str(admin_val).lower() == "clp"
+    except:
+        return False
+
+
+def load_attendance_adjustment_pct():
+    """Load the admin-set attendance adjustment percentage from database."""
+    try:
+        if table_exists('app_settings'):
+            result = read_sql("SELECT value FROM app_settings WHERE key = 'attendance_adj_pct'")
+            if len(result) > 0:
+                return float(result['value'].iloc[0])
+    except:
+        pass
+    return 0.0
+
+
+def save_attendance_adjustment_pct(pct):
+    """Save the attendance adjustment percentage to database (admin only)."""
+    try:
+        # Create settings table if not exists
+        if is_cloud_mode():
+            execute_sql("""
+                CREATE TABLE IF NOT EXISTS app_settings (
+                    key VARCHAR(100) PRIMARY KEY,
+                    value TEXT
+                )
+            """)
+            # Upsert the value
+            execute_sql("""
+                INSERT INTO app_settings (key, value) VALUES ('attendance_adj_pct', :val)
+                ON CONFLICT (key) DO UPDATE SET value = :val
+            """, {"val": str(pct)})
+        else:
+            execute_sql("""
+                CREATE TABLE IF NOT EXISTS app_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                )
+            """)
+            # SQLite upsert
+            execute_sql("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+                       ('attendance_adj_pct', str(pct)))
+    except Exception as e:
+        st.error(f"Could not save setting: {e}")
+
+
+def get_attendance_adjustment():
+    """Get the current attendance adjustment factor."""
+    if 'attendance_adj_enabled' not in st.session_state:
+        st.session_state.attendance_adj_enabled = False
+
+    # Load the admin-set percentage from database (cached in session)
+    if 'attendance_adj_pct' not in st.session_state:
+        st.session_state.attendance_adj_pct = load_attendance_adjustment_pct()
+
+    if st.session_state.attendance_adj_enabled:
+        return st.session_state.attendance_adj_pct
+    return 0.0
+
+
+def apply_attendance_adjustment(df, year_col='year', value_cols=None):
+    """
+    Apply attendance adjustment to prior year data.
+    If attendance is DOWN x% in current year, reduce prior year values by x%.
+    This normalizes comparisons to be "per-attendee" equivalent.
+
+    Args:
+        df: DataFrame to adjust
+        year_col: Column containing year
+        value_cols: List of columns to adjust (e.g., ['total_price', 'total_qty', 'gross_sales'])
+
+    Returns:
+        Adjusted DataFrame
+    """
+    adj_pct = get_attendance_adjustment()
+    if adj_pct == 0:
+        return df
+
+    df = df.copy()
+    current_year = datetime.now().year
+
+    # Apply adjustment factor to prior years
+    # If attendance is down 10% (adj_pct = -10), multiply prior year by 0.9
+    adjustment_factor = 1 + (adj_pct / 100)
+
+    if value_cols is None:
+        value_cols = ['total_price', 'total_qty', 'gross_sales']
+
+    for col in value_cols:
+        if col in df.columns:
+            # Only adjust prior years, not current year
+            prior_year_mask = df[year_col] < current_year
+            df.loc[prior_year_mask, col] = df.loc[prior_year_mask, col] * adjustment_factor
+
+    return df
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 
@@ -2470,24 +2596,108 @@ def main():
     except:
         pass
 
-    # Header with upload button in top right
-    header_col1, header_col2 = st.columns([4, 1])
+    # Check admin mode for attendance adjustment percentage setting
+    admin_mode = is_admin_mode()
+
+    # Load the stored adjustment percentage (set by admin)
+    if 'attendance_adj_pct' not in st.session_state:
+        st.session_state.attendance_adj_pct = load_attendance_adjustment_pct()
+
+    # Check if adjustment is configured (non-zero value set by admin)
+    adj_pct_configured = st.session_state.attendance_adj_pct != 0
+
+    # Header layout: always show attendance toggle if configured, admin gets more controls
+    header_col1, header_col2, header_col3 = st.columns([3.2, 1.3, 1])
 
     with header_col1:
         last_updated_text = f" · Updated {last_updated}" if last_updated else ""
+
+        # Show attendance adjustment indicator if enabled
+        adj_active = st.session_state.get('attendance_adj_enabled', False) and st.session_state.get('attendance_adj_pct', 0) != 0
+        norm_indicator = '<span style="background: rgba(234, 179, 8, 0.2); color: #eab308; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-left: 12px;">ATT. ADJUSTED</span>' if adj_active else ''
+
         st.markdown(f"""
             <div class="dash-header">
                 <div>
                     <span class="dash-title">Canobie Lake Park</span>
-                    <span class="badge">F&B Sales</span>
+                    <span class="badge">F&B Sales</span>{norm_indicator}
                 </div>
                 <div class="dash-subtitle">Food & Beverage Sales Dashboard{last_updated_text}</div>
             </div>
         """, unsafe_allow_html=True)
 
+    # Attendance adjustment control - toggle visible directly in header
     with header_col2:
         st.markdown("<div style='height: 16px'></div>", unsafe_allow_html=True)
-        with st.popover("Upload Data", use_container_width=True):
+
+        # DEBUG: Show query params (remove after testing)
+        st.caption(f"URL params: {dict(st.query_params)} | Admin: {admin_mode}")
+
+        # Debug indicator for admin mode
+        if admin_mode:
+            st.markdown('<span style="color: #22c55e; font-size: 10px;">ADMIN</span>', unsafe_allow_html=True)
+
+        # Show toggle directly in header if adjustment is configured (visible to all users)
+        if adj_pct_configured:
+            # Toggle visible directly in header for all users
+            enabled = st.toggle(
+                "Att. Adjusted",
+                value=st.session_state.get('attendance_adj_enabled', False),
+                key="att_adj_toggle_global",
+                help="Adjust prior year data to account for attendance differences"
+            )
+            st.session_state.attendance_adj_enabled = enabled
+
+            # Admin-only: small button to configure the percentage
+            if admin_mode:
+                with st.popover("Config", use_container_width=True):
+                    st.markdown("**Set Adjustment % (Admin Only)**")
+                    adj_pct = st.slider(
+                        "Attendance Change %",
+                        min_value=-50,
+                        max_value=50,
+                        value=int(st.session_state.get('attendance_adj_pct', 0)),
+                        step=1,
+                        help="Negative = attendance down",
+                        key="att_adj_slider"
+                    )
+
+                    if adj_pct != st.session_state.attendance_adj_pct:
+                        st.session_state.attendance_adj_pct = adj_pct
+                        save_attendance_adjustment_pct(adj_pct)
+                        st.success("Saved!")
+
+                    if adj_pct != 0:
+                        direction = "down" if adj_pct < 0 else "up"
+                        factor = 1 + (adj_pct / 100)
+                        st.caption(f"Att. {direction} {abs(adj_pct)}% → prior year x{factor:.2f}")
+
+        elif admin_mode:
+            # Admin but no adjustment configured yet - show setup button
+            with st.popover("Att. Setup", use_container_width=True):
+                st.markdown("**Attendance Adjustment Setup**")
+                st.caption("Normalize comparisons for attendance differences")
+
+                adj_pct = st.slider(
+                    "Attendance Change %",
+                    min_value=-50,
+                    max_value=50,
+                    value=0,
+                    step=1,
+                    help="Negative = attendance down (e.g., -10 for 10% down)",
+                    key="att_adj_slider_setup"
+                )
+
+                if st.button("Save & Enable Toggle", type="primary", use_container_width=True):
+                    st.session_state.attendance_adj_pct = adj_pct
+                    save_attendance_adjustment_pct(adj_pct)
+                    st.success("Saved! Refresh to see toggle.")
+                    st.rerun()
+
+
+    with header_col3:
+        st.markdown("<div style='height: 16px'></div>", unsafe_allow_html=True)
+        with st.popover("Upload", use_container_width=True):
             render_upload_compact()
 
     df = load_sales_data()
