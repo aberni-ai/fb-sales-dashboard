@@ -3384,6 +3384,507 @@ def apply_attendance_adjustment(df, year_col='year', value_cols=None):
 
 
 # =============================================================================
+# TAB: SEASON RACE (Animated YoY Comparison)
+# =============================================================================
+
+def render_season_race(df):
+    """Render animated season race visualization - like real-time trading charts."""
+
+    st.markdown("""
+        <style>
+        .race-container {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid rgba(59, 130, 246, 0.2);
+        }
+        .race-ticker {
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+            font-size: 42px;
+            font-weight: 700;
+            letter-spacing: -1px;
+        }
+        .race-label {
+            font-size: 12px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+        .race-change-positive {
+            color: #22c55e;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        .race-change-negative {
+            color: #ef4444;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        .race-momentum {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            display: inline-block;
+        }
+        .momentum-accelerating {
+            background: rgba(34, 197, 94, 0.15);
+            color: #22c55e;
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+        .momentum-decelerating {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        .momentum-stable {
+            background: rgba(148, 163, 184, 0.15);
+            color: #94a3b8;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+        }
+        .race-date-display {
+            font-family: 'SF Mono', monospace;
+            font-size: 18px;
+            color: #3b82f6;
+            background: rgba(59, 130, 246, 0.1);
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 1px solid rgba(59, 130, 246, 0.2);
+        }
+        .deviation-alert {
+            background: linear-gradient(90deg, rgba(234, 179, 8, 0.1) 0%, transparent 100%);
+            border-left: 3px solid #eab308;
+            padding: 12px 16px;
+            margin: 8px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .deviation-alert-positive {
+            background: linear-gradient(90deg, rgba(34, 197, 94, 0.1) 0%, transparent 100%);
+            border-left-color: #22c55e;
+        }
+        .deviation-alert-negative {
+            background: linear-gradient(90deg, rgba(239, 68, 68, 0.1) 0%, transparent 100%);
+            border-left-color: #ef4444;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
+        <div class="section-header">
+            <div class="section-title">Season Race</div>
+            <div class="section-subtitle">Watch the season unfold with real-time style YoY comparison</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Get available years
+    years = sorted(df['year'].dropna().unique())
+    if len(years) < 2:
+        st.info("Need at least 2 years of data for comparison.")
+        return
+
+    # Controls row
+    col1, col2, col3, col4 = st.columns([1.5, 2, 1, 1])
+
+    with col1:
+        compare_type = st.selectbox(
+            "Compare",
+            ["All Sales", "Category", "Location", "Item"],
+            key="race_compare_type"
+        )
+
+    with col2:
+        if compare_type == "Category":
+            categories = sorted([c for c in df['category'].unique() if c and pd.notna(c)])
+            selected_entity = st.selectbox("Select Category", categories, key="race_category")
+        elif compare_type == "Location":
+            # Load location data
+            try:
+                loc_df = read_sql("SELECT DISTINCT location FROM location_sales")
+                locations = sorted(loc_df['location'].tolist())
+            except:
+                locations = []
+            if locations:
+                selected_entity = st.selectbox("Select Location", locations, key="race_location")
+            else:
+                st.info("No location data available")
+                selected_entity = None
+        elif compare_type == "Item":
+            items = sorted([i for i in df['plu_name'].unique() if i and pd.notna(i)])
+            selected_entity = st.selectbox("Select Item", items, key="race_item")
+        else:
+            selected_entity = "All"
+
+    with col3:
+        year1 = st.selectbox("Year 1", [int(y) for y in years[:-1]], index=len(years)-2, key="race_year1")
+
+    with col4:
+        year2_options = [int(y) for y in years if y > year1]
+        if year2_options:
+            year2 = st.selectbox("Year 2", year2_options, index=len(year2_options)-1, key="race_year2")
+        else:
+            year2 = int(years[-1])
+            st.selectbox("Year 2", [year2], key="race_year2")
+
+    st.markdown("<div style='height: 16px'></div>", unsafe_allow_html=True)
+
+    # Prepare data based on comparison type
+    if compare_type == "Location" and selected_entity:
+        try:
+            loc_data = read_sql("SELECT date, location, gross_sales FROM location_sales")
+            loc_data['date'] = pd.to_datetime(loc_data['date'])
+            loc_data['year'] = loc_data['date'].dt.year
+            race_df = loc_data[loc_data['location'] == selected_entity].copy()
+            value_col = 'gross_sales'
+        except:
+            st.error("Could not load location data")
+            return
+    elif compare_type == "Category" and selected_entity:
+        race_df = df[df['category'] == selected_entity].copy()
+        value_col = 'total_price'
+    elif compare_type == "Item" and selected_entity:
+        race_df = df[df['plu_name'] == selected_entity].copy()
+        value_col = 'total_price'
+    else:
+        race_df = df.copy()
+        value_col = 'total_price'
+
+    # Apply attendance adjustment
+    if value_col == 'total_price':
+        race_df = apply_attendance_adjustment(race_df, value_cols=['total_price'])
+    elif value_col == 'gross_sales':
+        race_df = apply_attendance_adjustment(race_df, value_cols=['gross_sales'])
+
+    # Filter to selected years
+    race_df = race_df[race_df['year'].isin([year1, year2])]
+
+    if len(race_df) == 0:
+        st.warning("No data available for selected filters.")
+        return
+
+    # Aggregate daily data for each year
+    daily_y1 = race_df[race_df['year'] == year1].groupby(race_df[race_df['year'] == year1]['date'].dt.date)[value_col].sum().reset_index()
+    daily_y2 = race_df[race_df['year'] == year2].groupby(race_df[race_df['year'] == year2]['date'].dt.date)[value_col].sum().reset_index()
+
+    daily_y1.columns = ['date', 'sales']
+    daily_y2.columns = ['date', 'sales']
+
+    daily_y1['date'] = pd.to_datetime(daily_y1['date'])
+    daily_y2['date'] = pd.to_datetime(daily_y2['date'])
+
+    daily_y1 = daily_y1.sort_values('date')
+    daily_y2 = daily_y2.sort_values('date')
+
+    # Calculate cumulative
+    daily_y1['cumulative'] = daily_y1['sales'].cumsum()
+    daily_y2['cumulative'] = daily_y2['sales'].cumsum()
+
+    # Align dates using day-of-week matching
+    REFERENCE_YEAR = 2000
+    current_year = datetime.now().year
+
+    def get_day_offset(year):
+        offset = 0
+        for y in range(year, current_year):
+            if (y % 4 == 0 and y % 100 != 0) or (y % 400 == 0):
+                offset += 2
+            else:
+                offset += 1
+        return offset % 7
+
+    offset_y1 = get_day_offset(year1)
+
+    daily_y1['aligned_date'] = daily_y1['date'].apply(
+        lambda d: datetime(REFERENCE_YEAR, d.month, d.day) - timedelta(days=offset_y1)
+    )
+    daily_y2['aligned_date'] = daily_y2['date'].apply(
+        lambda d: datetime(REFERENCE_YEAR, d.month, d.day)
+    )
+
+    # Merge on aligned date
+    merged = daily_y1[['aligned_date', 'cumulative']].merge(
+        daily_y2[['aligned_date', 'cumulative']],
+        on='aligned_date',
+        how='inner',
+        suffixes=('_y1', '_y2')
+    ).sort_values('aligned_date')
+
+    if len(merged) == 0:
+        st.warning("No overlapping dates between the two years.")
+        return
+
+    # Calculate metrics at each point
+    merged['diff'] = merged['cumulative_y2'] - merged['cumulative_y1']
+    merged['pct_diff'] = ((merged['cumulative_y2'] - merged['cumulative_y1']) / merged['cumulative_y1'] * 100).fillna(0)
+    merged['pct_diff_change'] = merged['pct_diff'].diff().fillna(0)  # Momentum
+
+    # Find key moments (deviations > 2% change in a day)
+    merged['is_deviation'] = abs(merged['pct_diff_change']) > 2
+
+    # Animation controls
+    st.markdown("### Playback Controls")
+
+    control_col1, control_col2, control_col3, control_col4 = st.columns([1, 1, 1, 2])
+
+    with control_col1:
+        if st.button("▶ Play", key="race_play", use_container_width=True, type="primary"):
+            st.session_state.race_playing = True
+            st.session_state.race_frame = 0
+
+    with control_col2:
+        if st.button("⏸ Pause", key="race_pause", use_container_width=True):
+            st.session_state.race_playing = False
+
+    with control_col3:
+        if st.button("↺ Reset", key="race_reset", use_container_width=True):
+            st.session_state.race_playing = False
+            st.session_state.race_frame = 0
+
+    with control_col4:
+        speed = st.select_slider(
+            "Speed",
+            options=["0.5x", "1x", "2x", "4x", "Max"],
+            value="2x",
+            key="race_speed"
+        )
+
+    # Initialize session state
+    if 'race_frame' not in st.session_state:
+        st.session_state.race_frame = len(merged) - 1  # Start at end
+    if 'race_playing' not in st.session_state:
+        st.session_state.race_playing = False
+
+    # Frame slider
+    frame_idx = st.slider(
+        "Season Progress",
+        min_value=0,
+        max_value=len(merged) - 1,
+        value=st.session_state.race_frame,
+        key="race_slider",
+        format=""
+    )
+
+    st.session_state.race_frame = frame_idx
+
+    # Get current frame data
+    current_data = merged.iloc[:frame_idx + 1]
+    current_row = merged.iloc[frame_idx]
+
+    current_date = current_row['aligned_date']
+    current_y1 = current_row['cumulative_y1']
+    current_y2 = current_row['cumulative_y2']
+    current_diff = current_row['diff']
+    current_pct = current_row['pct_diff']
+    current_momentum = current_row['pct_diff_change']
+
+    # Determine momentum status
+    if current_momentum > 0.5:
+        momentum_class = "momentum-accelerating"
+        momentum_text = "↑ Gaining"
+    elif current_momentum < -0.5:
+        momentum_class = "momentum-decelerating"
+        momentum_text = "↓ Falling"
+    else:
+        momentum_class = "momentum-stable"
+        momentum_text = "→ Stable"
+
+    st.markdown("<div style='height: 16px'></div>", unsafe_allow_html=True)
+
+    # Display current date
+    st.markdown(f"""
+        <div style="text-align: center; margin-bottom: 20px;">
+            <span class="race-date-display">{current_date.strftime('%B %d')}</span>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Ticker display
+    ticker_col1, ticker_col2, ticker_col3 = st.columns(3)
+
+    with ticker_col1:
+        st.markdown(f"""
+            <div class="race-container" style="text-align: center;">
+                <div class="race-label">{year1} Cumulative</div>
+                <div class="race-ticker" style="color: #3b82f6;">${current_y1:,.0f}</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    with ticker_col2:
+        change_class = "race-change-positive" if current_pct >= 0 else "race-change-negative"
+        change_sign = "+" if current_pct >= 0 else ""
+        diff_sign = "+" if current_diff >= 0 else ""
+
+        st.markdown(f"""
+            <div class="race-container" style="text-align: center;">
+                <div class="race-label">YoY Change</div>
+                <div class="{change_class}">{change_sign}{current_pct:.1f}%</div>
+                <div style="color: #64748b; font-size: 14px; margin-top: 4px;">{diff_sign}${current_diff:,.0f}</div>
+                <div style="margin-top: 12px;">
+                    <span class="race-momentum {momentum_class}">{momentum_text}</span>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    with ticker_col3:
+        st.markdown(f"""
+            <div class="race-container" style="text-align: center;">
+                <div class="race-label">{year2} Cumulative</div>
+                <div class="race-ticker" style="color: #22c55e;">${current_y2:,.0f}</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
+
+    # Create the race chart
+    fig = go.Figure()
+
+    # Add traces for both years (full data in background, faded)
+    fig.add_trace(go.Scatter(
+        x=merged['aligned_date'],
+        y=merged['cumulative_y1'],
+        mode='lines',
+        name=f'{year1} (full)',
+        line=dict(color='rgba(59, 130, 246, 0.2)', width=1, dash='dot'),
+        hoverinfo='skip',
+        showlegend=False
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=merged['aligned_date'],
+        y=merged['cumulative_y2'],
+        mode='lines',
+        name=f'{year2} (full)',
+        line=dict(color='rgba(34, 197, 94, 0.2)', width=1, dash='dot'),
+        hoverinfo='skip',
+        showlegend=False
+    ))
+
+    # Add animated traces (current progress)
+    fig.add_trace(go.Scatter(
+        x=current_data['aligned_date'],
+        y=current_data['cumulative_y1'],
+        mode='lines',
+        name=str(year1),
+        line=dict(color='#3b82f6', width=3),
+        fill='tozeroy',
+        fillcolor='rgba(59, 130, 246, 0.1)',
+        hovertemplate=f'{year1}: $%{{y:,.0f}}<extra></extra>'
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=current_data['aligned_date'],
+        y=current_data['cumulative_y2'],
+        mode='lines',
+        name=str(year2),
+        line=dict(color='#22c55e', width=3),
+        fill='tozeroy',
+        fillcolor='rgba(34, 197, 94, 0.1)',
+        hovertemplate=f'{year2}: $%{{y:,.0f}}<extra></extra>'
+    ))
+
+    # Add current position markers
+    fig.add_trace(go.Scatter(
+        x=[current_date],
+        y=[current_y1],
+        mode='markers',
+        name='',
+        marker=dict(color='#3b82f6', size=12, symbol='circle',
+                   line=dict(color='white', width=2)),
+        showlegend=False,
+        hoverinfo='skip'
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=[current_date],
+        y=[current_y2],
+        mode='markers',
+        name='',
+        marker=dict(color='#22c55e', size=12, symbol='circle',
+                   line=dict(color='white', width=2)),
+        showlegend=False,
+        hoverinfo='skip'
+    ))
+
+    # Mark deviation points that have occurred
+    deviations = current_data[current_data['is_deviation']]
+    for _, dev in deviations.iterrows():
+        dev_color = '#22c55e' if dev['pct_diff_change'] > 0 else '#ef4444'
+        fig.add_annotation(
+            x=dev['aligned_date'],
+            y=max(dev['cumulative_y1'], dev['cumulative_y2']),
+            text="⚡",
+            showarrow=False,
+            font=dict(size=16),
+            yshift=20
+        )
+
+    layout = get_chart_layout(400)
+    layout['xaxis']['tickformat'] = '%b %d'
+    layout['legend'] = dict(
+        orientation='h',
+        yanchor='bottom',
+        y=1.02,
+        xanchor='right',
+        x=1,
+        font=dict(color='#e5e7eb', size=14)
+    )
+    layout['margin'] = dict(l=10, r=10, t=50, b=30)
+    layout['hovermode'] = 'x unified'
+
+    fig.update_layout(**layout)
+
+    st.plotly_chart(fig, use_container_width=True, key="race_main_chart")
+
+    # Show recent deviations/alerts
+    recent_deviations = current_data[current_data['is_deviation']].tail(3)
+
+    if len(recent_deviations) > 0:
+        st.markdown("### Recent Momentum Shifts")
+        for _, dev in recent_deviations.iterrows():
+            dev_class = "deviation-alert-positive" if dev['pct_diff_change'] > 0 else "deviation-alert-negative"
+            dev_direction = "gained" if dev['pct_diff_change'] > 0 else "lost"
+            st.markdown(f"""
+                <div class="deviation-alert {dev_class}">
+                    <strong>{dev['aligned_date'].strftime('%B %d')}</strong>:
+                    {year2} {dev_direction} {abs(dev['pct_diff_change']):.1f}% momentum
+                    (Gap now {'+' if dev['pct_diff'] >= 0 else ''}{dev['pct_diff']:.1f}%)
+                </div>
+            """, unsafe_allow_html=True)
+
+    # Season summary stats
+    st.markdown("### Season Stats")
+
+    stats_col1, stats_col2, stats_col3, stats_col4 = st.columns(4)
+
+    # Calculate stats from current progress
+    max_lead = current_data['pct_diff'].max()
+    max_deficit = current_data['pct_diff'].min()
+    biggest_swing = current_data['pct_diff_change'].abs().max()
+    deviation_count = len(current_data[current_data['is_deviation']])
+
+    with stats_col1:
+        render_kpi_card("Best Lead", f"+{max_lead:.1f}%" if max_lead > 0 else f"{max_lead:.1f}%")
+
+    with stats_col2:
+        render_kpi_card("Worst Deficit", f"{max_deficit:.1f}%")
+
+    with stats_col3:
+        render_kpi_card("Biggest Swing", f"{biggest_swing:.1f}%")
+
+    with stats_col4:
+        render_kpi_card("Momentum Shifts", f"{deviation_count}")
+
+    # Auto-play logic (using rerun)
+    if st.session_state.race_playing and frame_idx < len(merged) - 1:
+        speed_map = {"0.5x": 0.4, "1x": 0.2, "2x": 0.1, "4x": 0.05, "Max": 0.01}
+        import time
+        time.sleep(speed_map.get(speed, 0.1))
+        st.session_state.race_frame = frame_idx + 1
+        st.rerun()
+    elif st.session_state.race_playing and frame_idx >= len(merged) - 1:
+        st.session_state.race_playing = False
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 
@@ -3501,7 +4002,7 @@ def main():
         st.warning("No data found. Use the Upload Data button above to get started.")
         return
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Summary", "Locations", "Items", "Comparison", "Forecast"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Summary", "Locations", "Items", "Comparison", "Forecast", "Season Race"])
 
     with tab1:
         render_sales_overview(df)
@@ -3529,6 +4030,9 @@ def main():
             render_forecast(df)
         else:
             render_remaining_season_forecast(df)
+
+    with tab6:
+        render_season_race(df)
 
 
 if __name__ == "__main__":
