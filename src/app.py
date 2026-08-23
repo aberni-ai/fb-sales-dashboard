@@ -3716,23 +3716,58 @@ def render_season_race(df):
 
     fig.frames = frames
 
-    # Find key momentum shifts for annotations
-    merged['abs_swing'] = merged['pct_diff_change'].abs()
-    top_positive = merged[merged['pct_diff_change'] > 0].nlargest(2, 'pct_diff_change')
-    top_negative = merged[merged['pct_diff_change'] < 0].nsmallest(2, 'pct_diff_change')
-    key_moments = pd.concat([top_positive, top_negative])
-    key_moments = key_moments[key_moments['abs_swing'] > 3]
+    # July 1st cutoff for meaningful stats
+    july_1st = datetime(REFERENCE_YEAR, 7, 1)
 
-    for _, dev in key_moments.iterrows():
-        dev_color = '#22c55e' if dev['pct_diff_change'] > 0 else '#ef4444'
-        fig.add_annotation(
-            x=dev['aligned_date'],
-            y=max(dev['cumulative_y1'], dev['cumulative_y2']),
-            text="⚡",
-            showarrow=False,
-            font=dict(size=14, color=dev_color),
-            yshift=15
-        )
+    # Add vertical line at July 1st to mark "meaningful data" boundary
+    fig.add_vline(
+        x=july_1st,
+        line=dict(color='rgba(148, 163, 184, 0.4)', width=1, dash='dash'),
+        annotation_text="Jul 1",
+        annotation_position="top",
+        annotation_font=dict(color='#64748b', size=10)
+    )
+
+    # Calculate momentum shifts (diverging = gap widening, converging = gap narrowing)
+    merged['abs_swing'] = merged['pct_diff_change'].abs()
+    merged['is_diverging'] = merged['pct_diff_change'].abs() > 0  # Gap changing
+
+    # Split data: before and after July 1
+    pre_july = merged[merged['aligned_date'] < july_1st]
+    post_july = merged[merged['aligned_date'] >= july_1st]
+
+    # Find key moments AFTER July 1 only (for lead/gap stats)
+    if len(post_july) > 0:
+        best_lead_idx = post_july['pct_diff'].idxmax()
+        worst_gap_idx = post_july['pct_diff'].idxmin()
+        best_lead_row = post_july.loc[best_lead_idx]
+        worst_gap_row = post_july.loc[worst_gap_idx]
+
+        # Mark best lead point with a subtle dot
+        fig.add_trace(go.Scatter(
+            x=[best_lead_row['aligned_date']],
+            y=[best_lead_row['cumulative_y2']],
+            mode='markers+text',
+            marker=dict(color='#22c55e', size=10, symbol='circle'),
+            text=[f"+{best_lead_row['pct_diff']:.1f}%"],
+            textposition='top center',
+            textfont=dict(color='#22c55e', size=11),
+            showlegend=False,
+            hoverinfo='skip'
+        ))
+
+        # Mark worst gap point
+        fig.add_trace(go.Scatter(
+            x=[worst_gap_row['aligned_date']],
+            y=[worst_gap_row['cumulative_y2']],
+            mode='markers+text',
+            marker=dict(color='#ef4444', size=10, symbol='circle'),
+            text=[f"{worst_gap_row['pct_diff']:.1f}%"],
+            textposition='bottom center',
+            textfont=dict(color='#ef4444', size=11),
+            showlegend=False,
+            hoverinfo='skip'
+        ))
 
     # Animation controls
     fig.update_layout(
@@ -3831,22 +3866,56 @@ def render_season_race(df):
 
     st.plotly_chart(fig, use_container_width=True, key="race_main_chart")
 
-    # Stats section
-    st.markdown('<p style="color: #6b7280; font-size: 12px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Season Stats</p>', unsafe_allow_html=True)
+    # Insights section - split by pre/post July 1
+    st.markdown("<div style='height: 12px'></div>", unsafe_allow_html=True)
 
-    max_lead = merged['pct_diff'].max()
-    max_deficit = merged['pct_diff'].min()
-    biggest_swing = merged['pct_diff_change'].abs().max()
+    # Post-July stats (meaningful sample size)
+    if len(post_july) > 0:
+        st.markdown('<p style="color: #6b7280; font-size: 12px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Season Performance (After Jul 1)</p>', unsafe_allow_html=True)
 
-    s1, s2, s3, s4 = st.columns(4)
-    with s1:
-        render_kpi_card("Best Lead", f"+{max_lead:.1f}%" if max_lead > 0 else f"{max_lead:.1f}%")
-    with s2:
-        render_kpi_card("Worst Gap", f"{max_deficit:.1f}%")
-    with s3:
-        render_kpi_card("Max Swing", f"{biggest_swing:.1f}%")
-    with s4:
-        render_kpi_card("Key Shifts", f"{len(key_moments)}")
+        post_july_lead = post_july['pct_diff'].max()
+        post_july_gap = post_july['pct_diff'].min()
+        post_july_swing = post_july['pct_diff_change'].abs().max()
+        current_pct = merged['pct_diff'].iloc[-1]
+
+        s1, s2, s3, s4 = st.columns(4)
+        with s1:
+            render_kpi_card("Current", f"{'+' if current_pct >= 0 else ''}{current_pct:.1f}%")
+        with s2:
+            render_kpi_card("Best Lead", f"+{post_july_lead:.1f}%" if post_july_lead > 0 else f"{post_july_lead:.1f}%")
+        with s3:
+            render_kpi_card("Worst Gap", f"{post_july_gap:.1f}%")
+        with s4:
+            render_kpi_card("Max Daily Swing", f"{post_july_swing:.1f}%")
+
+    # Key momentum shifts table
+    st.markdown("<div style='height: 16px'></div>", unsafe_allow_html=True)
+    st.markdown('<p style="color: #6b7280; font-size: 12px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Key Momentum Shifts</p>', unsafe_allow_html=True)
+
+    # Find significant momentum shifts (top 5 biggest daily swings)
+    significant_swings = merged.nlargest(5, 'abs_swing').copy()
+    significant_swings = significant_swings[significant_swings['abs_swing'] > 1]  # At least 1% swing
+
+    if len(significant_swings) > 0:
+        swing_data = []
+        for _, row in significant_swings.iterrows():
+            date_str = row['aligned_date'].strftime('%b %d')
+            direction = "↑ Gained" if row['pct_diff_change'] > 0 else "↓ Lost"
+            swing_pct = abs(row['pct_diff_change'])
+            gap_status = f"+{row['pct_diff']:.1f}%" if row['pct_diff'] >= 0 else f"{row['pct_diff']:.1f}%"
+            phase = "Early Season" if row['aligned_date'] < july_1st else "Peak Season"
+
+            swing_data.append({
+                'Date': date_str,
+                'Shift': f"{direction} {swing_pct:.1f}%",
+                'Gap After': gap_status,
+                'Phase': phase
+            })
+
+        swing_df = pd.DataFrame(swing_data)
+        st.dataframe(swing_df, use_container_width=True, hide_index=True, height=200)
+    else:
+        st.caption("No significant momentum shifts detected.")
 
 
 # =============================================================================
