@@ -1131,8 +1131,11 @@ def render_remaining_season_forecast(df):
 
     st.markdown("<div style='height: 12px'></div>", unsafe_allow_html=True)
 
-    # Calculate last year's data from today's date through end of season
-    # Use same month/day as today through Nov 30
+    # Calculate last year's data from today's equivalent week/day through end of season
+    # Uses week-based matching for apples-to-apples comparison
+
+    current_week = today.isocalendar()[1]
+    current_dow = today.weekday()
 
     # Get last year's remaining season data
     last_year_df = df[df['year'] == last_year].copy()
@@ -1141,31 +1144,35 @@ def render_remaining_season_forecast(df):
     if filter_col and selected_filter:
         last_year_df = last_year_df[last_year_df[filter_col].isin(selected_filter)]
 
-    # Filter to "today through end of season" using month/day logic
+    # Add week and day of week for filtering
+    last_year_df['_week'] = last_year_df['date'].dt.isocalendar().week
+    last_year_df['_dow'] = last_year_df['date'].dt.weekday
+
+    # Filter to "today through end of season" using week-based logic
+    # Include: weeks after current week, OR same week with day >= current day
     last_year_remaining = last_year_df[
-        (last_year_df['month'] > today.month) |
-        ((last_year_df['month'] == today.month) & (last_year_df['day_of_month'] >= today.day))
+        (last_year_df['_week'] > current_week) |
+        ((last_year_df['_week'] == current_week) & (last_year_df['_dow'] >= current_dow))
     ]
-    # Also filter out anything past season end
+    # Also filter out anything past season end (Nov)
     last_year_remaining = last_year_remaining[
         (last_year_remaining['month'] <= season_end_month)
     ]
+    last_year_remaining = last_year_remaining.drop(columns=['_week', '_dow'])
 
     if len(last_year_remaining) == 0:
-        st.warning(f"No data found for {last_year} from {today.strftime('%B %d')} through end of season.")
+        st.warning(f"No data found for {last_year} from week {current_week} through end of season.")
         return
 
-    # Also get this year's data so far for context
+    # Also get this year's data so far for context (week-based YTD)
     this_year_df = df[df['year'] == current_year].copy()
 
     # Apply same filter to this year
     if filter_col and selected_filter:
         this_year_df = this_year_df[this_year_df[filter_col].isin(selected_filter)]
 
-    this_year_ytd = this_year_df[
-        (this_year_df['month'] < today.month) |
-        ((this_year_df['month'] == today.month) & (this_year_df['day_of_month'] < today.day))
-    ]
+    # Use week-based YTD filter for this year
+    this_year_ytd = filter_ytd_by_week(this_year_df)
 
     # Calculate totals
     last_year_remaining_sales = last_year_remaining['total_price'].sum()
