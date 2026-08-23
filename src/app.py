@@ -460,29 +460,51 @@ def load_model():
 # HELPER FUNCTIONS
 # =============================================================================
 
-def filter_ytd_by_week(df, date_col='date'):
+def filter_ytd_same_dow(df, date_col='date'):
     """
-    Filter dataframe to YTD based on week number and day of week.
-    This ensures apples-to-apples comparison (Saturday to Saturday, etc.)
+    Filter dataframe to YTD with day-of-week alignment across years.
+    For 2025 vs 2026: adds 1 day to 2025 dates since 2025 wasn't a leap year.
+    This ensures Saturday Aug 22, 2026 compares to Saturday Aug 23, 2025.
     """
     today = datetime.now()
-    current_week = today.isocalendar()[1]  # ISO week number
-    current_dow = today.weekday()  # 0=Monday, 6=Sunday
+    current_year = today.year
 
-    # Add week and day of week columns if not present
     df = df.copy()
-    df['_week'] = df[date_col].dt.isocalendar().week
-    df['_dow'] = df[date_col].dt.weekday
 
-    # Filter: include all weeks before current, OR same week with day <= current day
-    filtered = df[
-        (df['_week'] < current_week) |
-        ((df['_week'] == current_week) & (df['_dow'] <= current_dow))
-    ]
+    # Calculate day offset for each year relative to current year
+    # Non-leap year = +1 day shift, leap year = +2 day shift
+    def get_day_offset(year):
+        """Days to add to align day-of-week with current year."""
+        offset = 0
+        for y in range(year, current_year):
+            # Leap year has 366 days (+2 dow shift), regular has 365 (+1 dow shift)
+            if (y % 4 == 0 and y % 100 != 0) or (y % 400 == 0):
+                offset += 2
+            else:
+                offset += 1
+        return offset % 7  # Only care about day of week (0-6)
 
-    # Clean up temp columns
-    filtered = filtered.drop(columns=['_week', '_dow'])
-    return filtered
+    # For each year, calculate the equivalent cutoff date
+    # Current year: use today's date
+    # Past years: use today's date + offset days
+    results = []
+    for year in df['year'].unique():
+        year_df = df[df['year'] == year]
+        if year == current_year:
+            # Current year: include up to today
+            year_filtered = year_df[year_df[date_col].dt.date <= today.date()]
+        else:
+            # Past year: include up to today + offset (to match day of week)
+            offset = get_day_offset(int(year))
+            cutoff = today + pd.Timedelta(days=offset)
+            year_filtered = year_df[
+                (year_df[date_col].dt.month < cutoff.month) |
+                ((year_df[date_col].dt.month == cutoff.month) &
+                 (year_df[date_col].dt.day <= cutoff.day))
+            ]
+        results.append(year_filtered)
+
+    return pd.concat(results, ignore_index=True) if results else df.iloc[0:0]
 
 
 def format_currency(value):
@@ -833,7 +855,7 @@ def render_comparison(df):
     # Apply date range filter
     if date_range == "Year to Date":
         # Filter to YTD by week number and day of week for apples-to-apples comparison
-        filtered_df = filter_ytd_by_week(filtered_df)
+        filtered_df = filter_ytd_same_dow(filtered_df)
     elif date_range == "Custom Range":
         filtered_df = filtered_df[
             (filtered_df['date'].dt.date >= start_date) &
@@ -1131,11 +1153,14 @@ def render_remaining_season_forecast(df):
 
     st.markdown("<div style='height: 12px'></div>", unsafe_allow_html=True)
 
-    # Calculate last year's data from today's equivalent week/day through end of season
-    # Uses week-based matching for apples-to-apples comparison
+    # Calculate last year's data from equivalent day-of-week through end of season
+    # 2025 wasn't a leap year, so add 1 day to get same day of week
 
-    current_week = today.isocalendar()[1]
-    current_dow = today.weekday()
+    # Calculate day offset (2025 = +1 day to match 2026 day of week)
+    day_offset = 1  # 2025 wasn't a leap year
+
+    # Equivalent start date in last year (same day of week as today)
+    last_year_start = today.replace(year=last_year) + timedelta(days=day_offset)
 
     # Get last year's remaining season data
     last_year_df = df[df['year'] == last_year].copy()
@@ -1144,35 +1169,25 @@ def render_remaining_season_forecast(df):
     if filter_col and selected_filter:
         last_year_df = last_year_df[last_year_df[filter_col].isin(selected_filter)]
 
-    # Add week and day of week for filtering
-    last_year_df['_week'] = last_year_df['date'].dt.isocalendar().week
-    last_year_df['_dow'] = last_year_df['date'].dt.weekday
-
-    # Filter to "today through end of season" using week-based logic
-    # Include: weeks after current week, OR same week with day >= current day
+    # Filter to "equivalent today through end of season"
     last_year_remaining = last_year_df[
-        (last_year_df['_week'] > current_week) |
-        ((last_year_df['_week'] == current_week) & (last_year_df['_dow'] >= current_dow))
+        (last_year_df['date'].dt.date >= last_year_start.date()) &
+        (last_year_df['month'] <= season_end_month)
     ]
-    # Also filter out anything past season end (Nov)
-    last_year_remaining = last_year_remaining[
-        (last_year_remaining['month'] <= season_end_month)
-    ]
-    last_year_remaining = last_year_remaining.drop(columns=['_week', '_dow'])
 
     if len(last_year_remaining) == 0:
-        st.warning(f"No data found for {last_year} from week {current_week} through end of season.")
+        st.warning(f"No data found for {last_year} from {last_year_start.strftime('%B %d')} through end of season.")
         return
 
-    # Also get this year's data so far for context (week-based YTD)
+    # Also get this year's data so far for context
     this_year_df = df[df['year'] == current_year].copy()
 
     # Apply same filter to this year
     if filter_col and selected_filter:
         this_year_df = this_year_df[this_year_df[filter_col].isin(selected_filter)]
 
-    # Use week-based YTD filter for this year
-    this_year_ytd = filter_ytd_by_week(this_year_df)
+    # This year YTD through today
+    this_year_ytd = this_year_df[this_year_df['date'].dt.date < today.date()]
 
     # Calculate totals
     last_year_remaining_sales = last_year_remaining['total_price'].sum()
@@ -1583,7 +1598,7 @@ def render_items(df):
             year_list = [int(y) for y in ytd_years]
             filtered = filtered[filtered['year'].isin(year_list)]
             # Filter to YTD by week number and day of week for apples-to-apples comparison
-            filtered = filter_ytd_by_week(filtered)
+            filtered = filter_ytd_same_dow(filtered)
     elif date_range == 'Custom Range':
         # Show date inputs for custom range
         col_start, col_end = st.columns(2)
@@ -2281,7 +2296,7 @@ def render_locations():
             year_list = [int(y) for y in selected_years]
             filtered_df = filtered_df[filtered_df['year'].isin(year_list)]
         # Filter to YTD by week number and day of week for apples-to-apples comparison
-        filtered_df = filter_ytd_by_week(filtered_df)
+        filtered_df = filter_ytd_same_dow(filtered_df)
     else:
         # Year filter for non-YTD modes
         if selected_year != 'All Years':
