@@ -876,7 +876,7 @@ def render_comparison(df):
             selected_items = st.multiselect("Select Items", items, default=[], key="comp_items", placeholder="Search items...")
 
     with col3:
-        date_range = st.selectbox("Date Range", ["Year to Date", "Full Season", "Custom Range"], key="comp_daterange")
+        date_range = st.selectbox("Date Range", ["Year to Date", "Full Season", "Last 7 Days", "Last 30 Days", "This Month", "Last Weekend", "Custom Range"], key="comp_daterange")
 
     with col4:
         metric = st.selectbox("Metric", ["Sales ($)", "Units Sold"], key="comp_metric")
@@ -887,11 +887,33 @@ def render_comparison(df):
     with col1:
         selected_years = st.multiselect("Years to Compare", [str(y) for y in years], default=[str(y) for y in years], key="comp_years")
 
-    if date_range == "Custom Range":
+    # Calculate preset date ranges
+    if date_range == "Last 7 Days":
+        end_date = today.date()
+        start_date = (today - timedelta(days=7)).date()
+    elif date_range == "Last 30 Days":
+        end_date = today.date()
+        start_date = (today - timedelta(days=30)).date()
+    elif date_range == "This Month":
+        start_date = today.replace(day=1).date()
+        end_date = today.date()
+    elif date_range == "Last Weekend":
+        # Find last Saturday and Sunday
+        days_since_sunday = today.weekday() + 1  # Monday=0, so Sunday was (weekday+1) days ago
+        if days_since_sunday == 7:  # Today is Sunday
+            days_since_sunday = 0
+        last_sunday = today - timedelta(days=days_since_sunday)
+        last_saturday = last_sunday - timedelta(days=1)
+        start_date = last_saturday.date()
+        end_date = last_sunday.date()
+    elif date_range == "Custom Range":
         with col2:
             start_date = st.date_input("Start", value=df['date'].min().date(), key="comp_start")
         with col3:
             end_date = st.date_input("End", value=df['date'].max().date(), key="comp_end")
+    else:
+        start_date = None
+        end_date = None
 
     st.markdown("<div style='height: 16px'></div>", unsafe_allow_html=True)
 
@@ -912,7 +934,8 @@ def render_comparison(df):
     if date_range == "Year to Date":
         # Filter to YTD by week number and day of week for apples-to-apples comparison
         filtered_df = filter_ytd_same_dow(filtered_df)
-    elif date_range == "Custom Range":
+    elif date_range in ["Last 7 Days", "Last 30 Days", "This Month", "Last Weekend", "Custom Range"]:
+        # Use the calculated start_date and end_date
         filtered_df = filtered_df[
             (filtered_df['date'].dt.date >= start_date) &
             (filtered_df['date'].dt.date <= end_date)
