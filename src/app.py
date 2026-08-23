@@ -3635,35 +3635,85 @@ def render_season_race(df):
     final_diff = final_row['diff']
     final_pct = final_row['pct_diff']
 
-    # Summary display
-    ticker_col1, ticker_col2, ticker_col3 = st.columns(3)
+    # Get today's sales (last row)
+    today_y1 = final_row['sales_y1']
+    today_y2 = final_row['sales_y2']
+    today_pct = final_row['daily_pct']
 
-    with ticker_col1:
+    # Calculate recent momentum
+    recent_momentum = merged['pct_diff_change'].tail(7).mean() if len(merged) >= 7 else 0
+
+    # ========================================
+    # FOMO-STYLE TOP STATS BAR
+    # ========================================
+    st.markdown("""
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px;">
+    """, unsafe_allow_html=True)
+
+    # Stat cards in a row
+    stats_data = [
+        (f"{year2} Total", f"${final_y2:,.0f}", "#10b981", None),
+        ("YoY Change", f"{'+' if final_pct >= 0 else ''}{final_pct:.1f}%", "#22c55e" if final_pct >= 0 else "#ef4444", f"${'+' if final_diff >= 0 else ''}{final_diff:,.0f}"),
+        ("Today's Sales", f"${today_y2:,.0f}", "#3b82f6", f"{'+' if today_pct >= 0 else ''}{today_pct:.1f}% vs LY"),
+        ("Momentum", f"{'+' if recent_momentum >= 0 else ''}{recent_momentum:.2f}%/day", "#22c55e" if recent_momentum >= 0 else "#ef4444", "7-day avg"),
+        (f"{year1} Total", f"${final_y1:,.0f}", "#6b7280", None),
+    ]
+
+    stat_cols = st.columns(5)
+    for i, (label, value, color, subtitle) in enumerate(stats_data):
+        with stat_cols[i]:
+            subtitle_html = f'<div style="color: #64748b; font-size: 11px; margin-top: 2px;">{subtitle}</div>' if subtitle else ''
+            st.markdown(f"""
+                <div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%);
+                            border: 1px solid rgba(71, 85, 105, 0.3); border-radius: 12px; padding: 12px 16px; text-align: center;">
+                    <div style="color: #9ca3af; font-size: 10px; text-transform: uppercase; letter-spacing: 1px;">{label}</div>
+                    <div style="color: {color}; font-size: 20px; font-weight: 700; margin-top: 4px; font-family: 'SF Mono', monospace;">{value}</div>
+                    {subtitle_html}
+                </div>
+            """, unsafe_allow_html=True)
+
+    # ========================================
+    # TALE OF THE TAPE (Boxing-style comparison)
+    # ========================================
+    st.markdown("<div style='height: 16px'></div>", unsafe_allow_html=True)
+
+    tape_col1, tape_col2, tape_col3 = st.columns([2, 1, 2])
+
+    # Calculate comparison stats
+    avg_daily_y1 = merged['sales_y1'].mean()
+    avg_daily_y2 = merged['sales_y2'].mean()
+    best_day_y1 = merged['sales_y1'].max()
+    best_day_y2 = merged['sales_y2'].max()
+    days_winning_y2 = (merged['sales_y2'] > merged['sales_y1']).sum()
+    days_winning_y1 = (merged['sales_y1'] > merged['sales_y2']).sum()
+    total_days = len(merged)
+
+    with tape_col1:
         st.markdown(f"""
-            <div class="race-container" style="text-align: center;">
-                <div class="race-label">{year1} Season Total</div>
-                <div class="race-ticker" style="color: #3b82f6; font-size: 32px;">${final_y1:,.0f}</div>
+            <div style="text-align: right;">
+                <div style="color: #3b82f6; font-size: 28px; font-weight: 700;">{year1}</div>
+                <div style="color: #e5e7eb; font-size: 16px; margin-top: 12px;">${avg_daily_y1:,.0f}</div>
+                <div style="color: #e5e7eb; font-size: 16px; margin-top: 8px;">${best_day_y1:,.0f}</div>
+                <div style="color: #e5e7eb; font-size: 16px; margin-top: 8px;">{days_winning_y1}</div>
             </div>
         """, unsafe_allow_html=True)
 
-    with ticker_col2:
-        change_class = "race-change-positive" if final_pct >= 0 else "race-change-negative"
-        change_sign = "+" if final_pct >= 0 else ""
-        diff_sign = "+" if final_diff >= 0 else ""
-
+    with tape_col2:
         st.markdown(f"""
-            <div class="race-container" style="text-align: center;">
-                <div class="race-label">YoY Change</div>
-                <div class="{change_class}">{change_sign}{final_pct:.1f}%</div>
-                <div style="color: #64748b; font-size: 14px; margin-top: 4px;">{diff_sign}${final_diff:,.0f}</div>
+            <div style="text-align: center; color: #6b7280; font-size: 11px; text-transform: uppercase;">
+                <div style="margin-top: 40px;">Avg Daily</div>
+                <div style="margin-top: 16px;">Best Day</div>
+                <div style="margin-top: 16px;">Days Won</div>
             </div>
         """, unsafe_allow_html=True)
 
-    with ticker_col3:
+    with tape_col3:
         st.markdown(f"""
-            <div class="race-container" style="text-align: center;">
-                <div class="race-label">{year2} Season Total</div>
-                <div class="race-ticker" style="color: #22c55e; font-size: 32px;">${final_y2:,.0f}</div>
+            <div style="text-align: left;">
+                <div style="color: #10b981; font-size: 28px; font-weight: 700;">{year2}</div>
+                <div style="color: #e5e7eb; font-size: 16px; margin-top: 12px;">${avg_daily_y2:,.0f}</div>
+                <div style="color: #e5e7eb; font-size: 16px; margin-top: 8px;">${best_day_y2:,.0f}</div>
+                <div style="color: #e5e7eb; font-size: 16px; margin-top: 8px;">{days_winning_y2}</div>
             </div>
         """, unsafe_allow_html=True)
 
@@ -3943,6 +3993,23 @@ def render_season_race(df):
     x_min = merged['aligned_date'].min() - timedelta(days=2)
     x_max = merged['aligned_date'].max() + timedelta(days=5)  # Small padding for visibility
 
+    # ========================================
+    # MILESTONE MARKERS
+    # ========================================
+    # Add horizontal milestone lines at key dollar amounts
+    milestone_values = [250000, 500000, 750000, 1000000, 1500000, 2000000, 2500000, 3000000]
+    milestone_labels = ["$250K", "$500K", "$750K", "$1M", "$1.5M", "$2M", "$2.5M", "$3M"]
+
+    for val, label in zip(milestone_values, milestone_labels):
+        if val < max_y:  # Only show milestones within the data range
+            fig.add_hline(
+                y=val,
+                line=dict(color='rgba(148, 163, 184, 0.25)', width=1, dash='dot'),
+                annotation_text=label,
+                annotation_position="left",
+                annotation_font=dict(color='rgba(148, 163, 184, 0.6)', size=10)
+            )
+
     fig.update_layout(
         plot_bgcolor='rgba(10, 10, 20, 1)',
         paper_bgcolor='rgba(10, 10, 20, 1)',
@@ -3987,6 +4054,65 @@ def render_season_race(df):
     )
 
     st.plotly_chart(fig, use_container_width=True, key="race_main_chart")
+
+    # ========================================
+    # TOP PERFORMERS PANEL (horizontal layout)
+    # ========================================
+    render_section_divider()
+    render_card_header("🏆 Top Performers YoY")
+
+    perf_col1, perf_col2 = st.columns(2)
+
+    with perf_col1:
+        # Top Items by YoY %
+        st.markdown('<div style="color: #10b981; font-size: 12px; font-weight: 600; margin-bottom: 8px;">📈 Top Items</div>', unsafe_allow_html=True)
+        try:
+            item_y1 = df[df['year'] == year1].groupby('plu_name')['total_price'].sum()
+            item_y2 = df[df['year'] == year2].groupby('plu_name')['total_price'].sum()
+            item_yoy = ((item_y2 - item_y1) / item_y1 * 100).dropna()
+            item_yoy = item_yoy[item_y1 > 1000]  # Minimum threshold
+            top_items = item_yoy.nlargest(5)
+
+            for item_name, pct in top_items.items():
+                display_name = item_name[:25] + "..." if len(str(item_name)) > 25 else item_name
+                color = "#22c55e" if pct > 0 else "#ef4444"
+                sign = "+" if pct > 0 else ""
+                st.markdown(f"""
+                    <div style="display: flex; justify-content: space-between; padding: 6px 12px; margin-bottom: 4px;
+                                background: rgba(30, 41, 59, 0.4); border-radius: 6px;">
+                        <span style="color: #e5e7eb; font-size: 12px;">{display_name}</span>
+                        <span style="color: {color}; font-size: 12px; font-weight: 600;">{sign}{pct:.0f}%</span>
+                    </div>
+                """, unsafe_allow_html=True)
+        except:
+            st.caption("No item data available")
+
+    with perf_col2:
+        # Top Locations by YoY %
+        st.markdown('<div style="color: #3b82f6; font-size: 12px; font-weight: 600; margin-bottom: 8px;">📍 Top Locations</div>', unsafe_allow_html=True)
+        try:
+            loc_data = read_sql("SELECT date, location, gross_sales FROM location_sales")
+            loc_data['date'] = pd.to_datetime(loc_data['date'])
+            loc_data['year'] = loc_data['date'].dt.year
+            loc_y1 = loc_data[loc_data['year'] == year1].groupby('location')['gross_sales'].sum()
+            loc_y2 = loc_data[loc_data['year'] == year2].groupby('location')['gross_sales'].sum()
+            loc_yoy = ((loc_y2 - loc_y1) / loc_y1 * 100).dropna()
+            loc_yoy = loc_yoy[loc_y1 > 1000]  # Minimum threshold
+            top_locs = loc_yoy.nlargest(5)
+
+            for loc_name, pct in top_locs.items():
+                display_name = loc_name[:25] + "..." if len(str(loc_name)) > 25 else loc_name
+                color = "#22c55e" if pct > 0 else "#ef4444"
+                sign = "+" if pct > 0 else ""
+                st.markdown(f"""
+                    <div style="display: flex; justify-content: space-between; padding: 6px 12px; margin-bottom: 4px;
+                                background: rgba(30, 41, 59, 0.4); border-radius: 6px;">
+                        <span style="color: #e5e7eb; font-size: 12px;">{display_name}</span>
+                        <span style="color: {color}; font-size: 12px; font-weight: 600;">{sign}{pct:.0f}%</span>
+                    </div>
+                """, unsafe_allow_html=True)
+        except:
+            st.caption("No location data available")
 
     # Insights section - split by pre/post July 1
     render_section_divider()
