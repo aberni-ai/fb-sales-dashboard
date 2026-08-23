@@ -2532,7 +2532,7 @@ def save_attendance_adjustment_pct(pct):
 def get_attendance_adjustment():
     """Get the current attendance adjustment factor."""
     if 'attendance_adj_enabled' not in st.session_state:
-        st.session_state.attendance_adj_enabled = False
+        st.session_state.attendance_adj_enabled = True  # Default to ON
 
     # Load the admin-set percentage from database (cached in session)
     if 'attendance_adj_pct' not in st.session_state:
