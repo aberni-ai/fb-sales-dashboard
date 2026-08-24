@@ -4286,7 +4286,11 @@ def main():
         st.warning("No data found. Use the Upload Data button above to get started.")
         return
 
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Summary", "Locations", "Items", "Comparison", "Forecast", "Season Race"])
+    # Season Race tab only visible in admin mode
+    if admin_mode:
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Summary", "Locations", "Items", "Comparison", "Forecast", "Season Race"])
+    else:
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["Summary", "Locations", "Items", "Comparison", "Forecast"])
 
     with tab1:
         render_sales_overview(df)
@@ -4315,8 +4319,9 @@ def main():
         else:
             render_remaining_season_forecast(df)
 
-    with tab6:
-        render_season_race(df)
+    if admin_mode:
+        with tab6:
+            render_season_race(df)
 
 
 if __name__ == "__main__":
