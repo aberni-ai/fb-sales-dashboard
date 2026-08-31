@@ -4286,6 +4286,31 @@ def main():
         st.warning("No data found. Use the Upload Data button above to get started.")
         return
 
+    # Check for missing uploads in last 2 weeks (admin only)
+    if admin_mode:
+        try:
+            # Get dates with data in current year
+            current_year = datetime.now().year
+            today = datetime.now().date()
+            two_weeks_ago = today - timedelta(days=14)
+
+            # Get all dates that have uploads
+            uploaded_dates = set(pd.to_datetime(df[df['year'] == current_year]['date']).dt.date.unique())
+
+            # Generate expected dates (last 2 weeks, excluding today)
+            expected_dates = set()
+            for i in range(1, 15):  # 1 to 14 days ago
+                expected_dates.add(today - timedelta(days=i))
+
+            # Find missing dates
+            missing_dates = sorted(expected_dates - uploaded_dates)
+
+            if missing_dates:
+                missing_str = ", ".join([d.strftime('%b %d') for d in missing_dates])
+                st.warning(f"⚠️ **Missing uploads** (last 2 weeks): {missing_str}")
+        except:
+            pass  # Silently fail if check doesn't work
+
     # Season Race tab only visible in admin mode
     if admin_mode:
         tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Summary", "Locations", "Items", "Comparison", "Forecast", "Season Race"])
