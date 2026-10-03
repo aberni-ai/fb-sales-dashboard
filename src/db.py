@@ -26,7 +26,7 @@ def get_supabase_connection():
     # URL-encode password to handle special characters
     password = quote_plus(secrets['password'])
     # Supabase connection string format
-    return f"postgresql://{secrets['user']}:{password}@{secrets['host']}:{secrets['port']}/{secrets['database']}"
+    return f"postgresql+psycopg://{secrets['user']}:{password}@{secrets['host']}:{secrets['port']}/{secrets['database']}"
 
 
 def get_connection():
