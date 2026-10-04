@@ -2510,6 +2510,24 @@ def merge_into_database(new_df):
     new_df = new_df.copy()
     new_df['date'] = new_df['date'].dt.strftime('%Y-%m-%d %H:%M:%S')
 
+    # Drop artifact rows with no PLU (blank/total rows parse as NaN)
+    new_df = new_df[new_df['plu'].notna()]
+
+    # psycopg v3 strictly types parameters: a float NaN in a text column raises
+    # DatatypeMismatch. Convert NaN -> None in text columns so they bind as NULL.
+    for col in new_df.select_dtypes(include=['object']).columns:
+        new_df[col] = new_df[col].where(pd.notna(new_df[col]), None)
+
+    # Keep numeric feature columns as float to match the existing table schema
+    # (all-NULL attendance can otherwise make these come through as integers).
+    for col in ['attendance', 'revenue_per_capita', 'qty_per_capita',
+                'rolling_7day_avg_qty', 'rolling_7day_avg_attendance']:
+        if col in new_df.columns:
+            new_df[col] = pd.to_numeric(new_df[col], errors='coerce').astype('float64')
+
+    if new_df.empty:
+        return
+
     # Check if table exists
     if not table_exists('sales_featured'):
         # Create table with first upload
